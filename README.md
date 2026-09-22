@@ -1,32 +1,34 @@
 # star-ci
 
-**自适应 GitHub CI：不用手写 CI 配置，工具读懂你的仓库，自动决定该跑哪些 CI。**
+English | [简体中文](README.zh-CN.md)
 
-star-ci 扫描仓库的技术栈信号（`package.json`、`go.mod`、`pyproject.toml`、锁文件、lint/测试配置……），生成一份"项目画像"，据此推断出合理的 CI 流水线（安装依赖 → lint → 类型检查 → 测试 → 构建 → 安全扫描），然后**直接在本地/CI 容器里执行**，或者**生成一份标准的 GitHub Actions workflow**。
+**Adaptive CI for GitHub: no hand-written CI config — the tool reads your repository and decides which CI to run.**
 
-## 核心理念
+star-ci scans a repository's tech-stack signals (`package.json`, `go.mod`, `pyproject.toml`, lockfiles, lint/test configs, …), builds a *project profile*, and infers a sensible CI pipeline (install deps → lint → typecheck → test → build → security scans). It can then **execute the plan directly** (locally or inside a CI container) or **render a standard GitHub Actions workflow**.
 
-- **零配置**：新仓库接入 CI 只需要一行 `uses:`，甚至只跑一次 `star-ci generate`。
-- **只执行项目已声明的标准**：没有 eslint 配置就不会发明 lint 步骤；没有测试目录就不会发明测试。
-- **置信度驱动**：每条检测都带置信度，低于阈值（0.5）的信号不会被采纳——宁可少跑，不要误跑。
-- **可解释性**：每个步骤都说明"检测到了什么，因此执行什么"；`star-ci analyze` 可以查看完整证据链。
-- **尊重存量**：检测到已有 `.github/workflows/` 时，`generate` 默认拒绝覆盖（除非 `--force`）。
-- **安全项永远可选**：依赖漏洞扫描、密钥泄露扫描、Docker 构建等步骤标记为 optional，失败只警告不阻断。
+## Principles
 
-## 工作原理
+- **Zero config**: onboarding a repo to CI takes a single `uses:` line, or one `star-ci generate` run.
+- **Only runs standards the project already declares**: no eslint config → no lint step invented; no tests → no test step invented.
+- **Confidence-driven**: every detection carries a confidence score; signals below the threshold (0.5) are ignored — better to skip a step than to run a wrong one.
+- **Explainable**: every step states *what was detected and why it runs*; `star-ci analyze` shows the full evidence trail.
+- **Respects existing CI**: when `.github/workflows/` already exists, `generate` refuses to overwrite (unless `--force`).
+- **Security steps are always optional**: dependency audits, secret scanning, and Docker builds warn instead of failing the run.
+
+## How it works
 
 ```
-仓库 ──▶ Analyzer（信号扫描）──▶ Rules（信号→步骤）──▶ Plan（排序）
-                                                          │
-                            ┌─────────────────────────────┼────────────────────┐
-                            ▼                             ▼                    ▼
-                     star-ci run                   star-ci generate      star-ci analyze
-                  本地/容器内直接执行              生成 workflow YAML     打印画像+证据链
+repo ──▶ Analyzer (signal scan) ──▶ Rules (signals → steps) ──▶ Plan (ordering)
+                                                                  │
+                            ┌─────────────────────────────────────┼────────────────────┐
+                            ▼                                     ▼                    ▼
+                     star-ci run                           star-ci generate      star-ci analyze
+                  execute locally / in a container      render workflow YAML   print profile + evidence
 ```
 
-## 安装
+## Installation
 
-**从源码构建（需要 Go 1.23+）：**
+**Build from source (requires Go 1.23+):**
 
 ```bash
 git clone https://github.com/cryer/star-ci.git
@@ -34,23 +36,23 @@ cd star-ci
 go build -o star-ci ./cmd/star-ci
 ```
 
-或直接安装：
+Or install directly:
 
 ```bash
 go install github.com/cryer/star-ci/cmd/star-ci@latest
 ```
 
-**Docker：**
+**Docker:**
 
 ```bash
 docker build -t star-ci .
 ```
 
-## 使用流程
+## Usage
 
-### 方式一：GitHub Action 运行时自适应（推荐，真零配置）
+### Option 1: GitHub Action with runtime adaptation (recommended, truly zero-config)
 
-在仓库里放一个固定的 workflow（`.github/workflows/ci.yml`），这就是全部配置：
+Put one fixed workflow in your repo (`.github/workflows/ci.yml`) — that's the entire configuration:
 
 ```yaml
 name: ci
@@ -63,9 +65,9 @@ jobs:
       - uses: cryer/star-ci@v1
 ```
 
-每次 CI 运行时，star-ci 在 job 内**现场检测**仓库并执行推断出的步骤。项目演进（换了包管理器、加了 lint）后无需改动任何配置——下次运行时自动适配。
+On every run, star-ci **analyzes the repo live inside the job** and executes the inferred steps. As the project evolves (new package manager, added linting), nothing needs updating — the next run adapts automatically.
 
-也可以指定子目录（monorepo 场景）：
+You can also point it at a subdirectory (monorepos):
 
 ```yaml
       - uses: cryer/star-ci@v1
@@ -73,24 +75,24 @@ jobs:
           path: ./packages/web
 ```
 
-### 方式二：生成具体的 workflow（产物透明、可手动维护）
+### Option 2: Generate a concrete workflow (transparent, hand-editable output)
 
 ```bash
-star-ci generate            # 写入 .github/workflows/star-ci.yml
-star-ci generate --force    # 覆盖已存在的文件
-star-ci generate -o ci.yml  # 自定义输出路径
+star-ci generate            # writes .github/workflows/star-ci.yml
+star-ci generate --force    # overwrite an existing file
+star-ci generate -o ci.yml  # custom output path
 ```
 
-生成的 YAML 是一份标准 GitHub Actions workflow，包含 `actions/checkout`、对应语言的 `setup-node/setup-python/setup-go`（含版本推断与依赖缓存），以及每个 CI 步骤。你可以提交后继续手动编辑。
+The generated YAML is a standard GitHub Actions workflow: `actions/checkout`, the matching `setup-node`/`setup-python`/`setup-go` (with version inference and dependency caching), and one step per CI task. Commit it and keep editing by hand if you like.
 
-### 方式三：本地 push 前自检
+### Option 3: Local pre-push self-check
 
 ```bash
-star-ci run           # 在当前目录检测并执行完整 CI 计划
-star-ci run ./path    # 指定仓库目录
+star-ci run           # detect + execute the full CI plan in the current directory
+star-ci run ./path    # ...or in a specific repo
 ```
 
-输出示例：
+Example output:
 
 ```
 star-ci: detected node, 5 steps
@@ -103,49 +105,49 @@ star-ci: detected node, 5 steps
 star-ci: 4 steps passed, 1 optional warnings
 ```
 
-必需步骤失败会立即中断（fail-fast）；optional 步骤（安全扫描、Docker 构建）失败只警告。退出码非 0 表示必需步骤失败，可直接挂到 pre-push hook。
+A failing required step aborts the run (fail-fast); optional steps (security scans, Docker build) only warn. A non-zero exit code means a required step failed, so it drops straight into a pre-push hook.
 
-### 调试：查看检测结果与证据链
+### Debugging: inspect detections and the evidence trail
 
 ```bash
-star-ci analyze           # 人类可读的画像 + 每条信号的置信度
-star-ci analyze --json    # 机器可读的完整 ProjectProfile
+star-ci analyze           # human-readable profile + per-signal confidence
+star-ci analyze --json    # machine-readable full ProjectProfile
 ```
 
-## 检测能力矩阵
+## Detection matrix
 
-| 生态 | 入口信号 | 包管理器 | 测试 | Lint / 格式 | 类型检查 | 构建 |
+| Ecosystem | Entry signals | Package manager | Tests | Lint / format | Typecheck | Build |
 |---|---|---|---|---|---|---|
-| Node/TS | `package.json` | 锁文件区分 pnpm/yarn/bun/npm | `scripts.test`、vitest/jest/mocha/`node --test` | eslint / biome / prettier（需配置文件） | `tsconfig.json` + typescript → `tsc --noEmit` | `scripts.build` |
+| Node/TS | `package.json` | lockfile: pnpm/yarn/bun/npm | `scripts.test`, vitest/jest/mocha/`node --test` | eslint / biome / prettier (config file required) | `tsconfig.json` + typescript → `tsc --noEmit` | `scripts.build` |
 | Python | `pyproject.toml` / `requirements.txt` / `setup.py` | uv/poetry/pipenv/pip | pytest | ruff / black | mypy | — |
-| Go | `go.mod` | go modules | 存在 `*_test.go` → `go test ./...` | golangci-lint（需 `.golangci.yml`） | `go vet ./...` | `go build ./...` |
+| Go | `go.mod` | go modules | any `*_test.go` → `go test ./...` | golangci-lint (requires `.golangci.yml`) | `go vet ./...` | `go build ./...` |
 
-**通用横切步骤（所有仓库，optional）：**
+**Cross-cutting steps (all repos, optional):**
 
-- 依赖漏洞扫描：`npm audit` / `pip-audit` / `govulncheck`（按生态匹配）
-- 密钥泄露扫描：`gitleaks detect`
-- 检测到 `Dockerfile` → `docker build .` 验证镜像可构建
+- Dependency vulnerability audit: `npm audit` / `pip-audit` / `govulncheck` (matched to the ecosystem)
+- Secret leak scan: `gitleaks detect`
+- `Dockerfile` detected → `docker build .` to verify the image builds
 
-版本推断：`.nvmrc` / `.node-version` / `engines.node`、`pyproject.toml` 的 `requires-python`、`go.mod` 的 `go` 指令。
+Version inference: `.nvmrc` / `.node-version` / `engines.node`, `requires-python` in `pyproject.toml`, the `go` directive in `go.mod`.
 
-## 项目结构
+## Project layout
 
 ```
-cmd/star-ci/        CLI 入口（analyze / run / generate）
-internal/profile/   项目画像类型（ProjectProfile / Signal）——核心契约
-internal/plan/      CI 步骤与计划类型（Step / Plan / Category）
-internal/analyzer/  信号扫描器（node / python / go / common）
-internal/rules/     规则引擎：画像 → 步骤
-internal/runner/    本地执行器（fail-fast + optional 警告）
-internal/render/    计划 → GitHub Actions YAML
-action.yml          GitHub Action（composite）
-Dockerfile          容器镜像
+cmd/star-ci/        CLI entrypoint (analyze / run / generate)
+internal/profile/   Project profile types (ProjectProfile / Signal) — the core contract
+internal/plan/      CI step & plan types (Step / Plan / Category)
+internal/analyzer/  Signal scanners (node / python / go / common)
+internal/rules/     Rule engine: profile → steps
+internal/runner/    Local executor (fail-fast + optional warnings)
+internal/render/    Plan → GitHub Actions YAML
+action.yml          GitHub Action (composite)
+Dockerfile          Container image
 ```
 
-## 路线图
+## Roadmap
 
-- [ ] `.star-ci.yml` 最小覆盖配置（禁用/追加步骤）
-- [ ] Rust / Java / Ruby 生态
-- [ ] monorepo workspace 检测与路径过滤（只跑受影响的包）
-- [ ] 覆盖率阈值检查
-- [ ] GitHub App：自动注入 workflow、PR 评论报告、配置漂移后 re-generate PR
+- [ ] `.star-ci.yml` minimal override config (disable/append steps)
+- [ ] Rust / Java / Ruby ecosystems
+- [ ] Monorepo workspace detection + path filtering (only run CI for affected packages)
+- [ ] Coverage thresholds
+- [ ] GitHub App: auto-inject workflows, PR comment reports, re-generate PRs on config drift
