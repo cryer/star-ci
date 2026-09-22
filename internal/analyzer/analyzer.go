@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/star-ci/star-ci/internal/profile"
+	"github.com/cryer/star-ci/internal/profile"
 )
 
 // Analyze scans the repository at root and merges the results of the

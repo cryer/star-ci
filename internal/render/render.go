@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/star-ci/star-ci/internal/plan"
+	"github.com/cryer/star-ci/internal/plan"
 )
 
 // WorkflowYAML renders pl as a GitHub Actions workflow document.

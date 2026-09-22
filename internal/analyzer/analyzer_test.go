@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/star-ci/star-ci/internal/analyzer"
-	"github.com/star-ci/star-ci/internal/profile"
+	"github.com/cryer/star-ci/internal/analyzer"
+	"github.com/cryer/star-ci/internal/profile"
 )
 
 func fixture(t *testing.T, name string) string {

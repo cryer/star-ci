@@ -1,3 +1,3 @@
-module github.com/star-ci/star-ci
+module github.com/cryer/star-ci
 
 go 1.27.1

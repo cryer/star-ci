@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/star-ci/star-ci/internal/profile"
+	"github.com/cryer/star-ci/internal/profile"
 )
 
 var goSkipDirs = map[string]bool{".git": true, "vendor": true, "node_modules": true}

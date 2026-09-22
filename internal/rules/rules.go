@@ -4,8 +4,8 @@ package rules
 import (
 	"strings"
 
-	"github.com/star-ci/star-ci/internal/plan"
-	"github.com/star-ci/star-ci/internal/profile"
+	"github.com/cryer/star-ci/internal/plan"
+	"github.com/cryer/star-ci/internal/profile"
 )
 
 // BuildPlan derives CI steps from the profile. Signals and languages below

@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/star-ci/star-ci/internal/profile"
+	"github.com/cryer/star-ci/internal/profile"
 )
 
 type pyprojectInfo struct {

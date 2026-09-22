@@ -3,8 +3,8 @@ package rules
 import (
 	"testing"
 
-	"github.com/star-ci/star-ci/internal/plan"
-	"github.com/star-ci/star-ci/internal/profile"
+	"github.com/cryer/star-ci/internal/plan"
+	"github.com/cryer/star-ci/internal/profile"
 )
 
 func findStep(t *testing.T, pl plan.Plan, id string) plan.Step {

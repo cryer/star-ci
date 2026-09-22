@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/star-ci/star-ci/internal/plan"
-	"github.com/star-ci/star-ci/internal/profile"
+	"github.com/cryer/star-ci/internal/plan"
+	"github.com/cryer/star-ci/internal/profile"
 )
 
 func requireSh(t *testing.T) {

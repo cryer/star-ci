@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/star-ci/star-ci/internal/profile"
+	"github.com/cryer/star-ci/internal/profile"
 )
 
 type packageJSON struct {

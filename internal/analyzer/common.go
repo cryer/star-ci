@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/star-ci/star-ci/internal/profile"
+	"github.com/cryer/star-ci/internal/profile"
 )
 
 // detectCommon records ecosystem-agnostic facts: Dockerfile and existing CI.

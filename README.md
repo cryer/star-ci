@@ -29,9 +29,15 @@ star-ci 扫描仓库的技术栈信号（`package.json`、`go.mod`、`pyproject.
 **从源码构建（需要 Go 1.23+）：**
 
 ```bash
-git clone https://github.com/star-ci/star-ci.git
+git clone https://github.com/cryer/star-ci.git
 cd star-ci
 go build -o star-ci ./cmd/star-ci
+```
+
+或直接安装：
+
+```bash
+go install github.com/cryer/star-ci/cmd/star-ci@latest
 ```
 
 **Docker：**
@@ -54,7 +60,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: star-ci/star-ci@v1
+      - uses: cryer/star-ci@v1
 ```
 
 每次 CI 运行时，star-ci 在 job 内**现场检测**仓库并执行推断出的步骤。项目演进（换了包管理器、加了 lint）后无需改动任何配置——下次运行时自动适配。
@@ -62,7 +68,7 @@ jobs:
 也可以指定子目录（monorepo 场景）：
 
 ```yaml
-      - uses: star-ci/star-ci@v1
+      - uses: cryer/star-ci@v1
         with:
           path: ./packages/web
 ```

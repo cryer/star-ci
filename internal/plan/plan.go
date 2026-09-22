@@ -1,7 +1,7 @@
 // Package plan defines CI steps and the executable plan produced by rules.
 package plan
 
-import "github.com/star-ci/star-ci/internal/profile"
+import "github.com/cryer/star-ci/internal/profile"
 
 // Category groups steps; categories also define execution order.
 type Category string

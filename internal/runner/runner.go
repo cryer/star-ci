@@ -9,7 +9,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/star-ci/star-ci/internal/plan"
+	"github.com/cryer/star-ci/internal/plan"
 )
 
 // Run prints and executes each step of the plan from root. A failed required
