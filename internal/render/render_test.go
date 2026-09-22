@@ -142,3 +142,113 @@ func TestWorkflowYAMLNoVersionHints(t *testing.T) {
 		t.Errorf("npm profile must not set up pnpm:\n%s", y)
 	}
 }
+
+func TestWorkflowYAMLJava(t *testing.T) {
+	var prof profile.Profile
+	prof.AddLanguage("java", "17", 0.95)
+
+	data, err := WorkflowYAML(plan.Plan{Profile: prof})
+	if err != nil {
+		t.Fatalf("WorkflowYAML: %v", err)
+	}
+	y := string(data)
+	for _, want := range []string{
+		"      - name: Set up Java\n",
+		"uses: actions/setup-java@v4",
+		"          distribution: temurin",
+		"          java-version: '17'",
+	} {
+		if !strings.Contains(y, want) {
+			t.Errorf("workflow missing %q\ngot:\n%s", want, y)
+		}
+	}
+
+	var noHint profile.Profile
+	noHint.AddLanguage("java", "", 0.95)
+	data, err = WorkflowYAML(plan.Plan{Profile: noHint})
+	if err != nil {
+		t.Fatalf("WorkflowYAML: %v", err)
+	}
+	y = string(data)
+	if !strings.Contains(y, "distribution: temurin") {
+		t.Errorf("java setup must always pin a distribution:\n%s", y)
+	}
+	if strings.Contains(y, "java-version:") {
+		t.Errorf("empty version hint should omit java-version:\n%s", y)
+	}
+}
+
+func TestWorkflowYAMLRuby(t *testing.T) {
+	var prof profile.Profile
+	prof.AddLanguage("ruby", "3.2.2", 0.95)
+
+	data, err := WorkflowYAML(plan.Plan{Profile: prof})
+	if err != nil {
+		t.Fatalf("WorkflowYAML: %v", err)
+	}
+	y := string(data)
+	for _, want := range []string{
+		"      - name: Set up Ruby\n",
+		"uses: ruby/setup-ruby@v1",
+		"          ruby-version: '3.2.2'",
+		"          bundler-cache: true",
+	} {
+		if !strings.Contains(y, want) {
+			t.Errorf("workflow missing %q\ngot:\n%s", want, y)
+		}
+	}
+}
+
+func TestWorkflowYAMLPHP(t *testing.T) {
+	var prof profile.Profile
+	prof.AddLanguage("php", "8.1", 0.95)
+
+	data, err := WorkflowYAML(plan.Plan{Profile: prof})
+	if err != nil {
+		t.Fatalf("WorkflowYAML: %v", err)
+	}
+	y := string(data)
+	for _, want := range []string{
+		"      - name: Set up PHP\n",
+		"uses: shivammathur/setup-php@v2",
+		"          php-version: '8.1'",
+	} {
+		if !strings.Contains(y, want) {
+			t.Errorf("workflow missing %q\ngot:\n%s", want, y)
+		}
+	}
+}
+
+func TestWorkflowYAMLDotnet(t *testing.T) {
+	var prof profile.Profile
+	prof.AddLanguage("dotnet", "8.0.100", 0.95)
+
+	data, err := WorkflowYAML(plan.Plan{Profile: prof})
+	if err != nil {
+		t.Fatalf("WorkflowYAML: %v", err)
+	}
+	y := string(data)
+	for _, want := range []string{
+		"      - name: Set up .NET\n",
+		"uses: actions/setup-dotnet@v4",
+		"          dotnet-version: '8.0.100'",
+	} {
+		if !strings.Contains(y, want) {
+			t.Errorf("workflow missing %q\ngot:\n%s", want, y)
+		}
+	}
+}
+
+func TestWorkflowYAMLCppNoSetup(t *testing.T) {
+	var prof profile.Profile
+	prof.AddLanguage("cpp", "17", 0.95)
+
+	data, err := WorkflowYAML(plan.Plan{Profile: prof})
+	if err != nil {
+		t.Fatalf("WorkflowYAML: %v", err)
+	}
+	y := string(data)
+	if strings.Contains(y, "setup-") {
+		t.Errorf("cpp needs no setup step (runner ships cmake/gcc), got:\n%s", y)
+	}
+}

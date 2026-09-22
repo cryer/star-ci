@@ -61,6 +61,44 @@ func WorkflowYAML(pl plan.Plan) ([]byte, error) {
 			b.WriteString(with)
 		}
 	}
+	if prof.HasLanguage("java") {
+		b.WriteString("      - name: Set up Java\n")
+		b.WriteString("        uses: actions/setup-java@v4\n")
+		if with := setupWith(map[string]string{
+			"distribution": "temurin",
+			"java-version": prof.LanguageVersion("java"),
+		}); with != "" {
+			b.WriteString("        with:\n")
+			b.WriteString(with)
+		}
+	}
+	if prof.HasLanguage("ruby") {
+		b.WriteString("      - name: Set up Ruby\n")
+		b.WriteString("        uses: ruby/setup-ruby@v1\n")
+		if with := setupWith(map[string]string{
+			"ruby-version":  prof.LanguageVersion("ruby"),
+			"bundler-cache": "true",
+		}); with != "" {
+			b.WriteString("        with:\n")
+			b.WriteString(with)
+		}
+	}
+	if prof.HasLanguage("php") {
+		b.WriteString("      - name: Set up PHP\n")
+		b.WriteString("        uses: shivammathur/setup-php@v2\n")
+		if with := setupWith(map[string]string{"php-version": prof.LanguageVersion("php")}); with != "" {
+			b.WriteString("        with:\n")
+			b.WriteString(with)
+		}
+	}
+	if prof.HasLanguage("dotnet") {
+		b.WriteString("      - name: Set up .NET\n")
+		b.WriteString("        uses: actions/setup-dotnet@v4\n")
+		if with := setupWith(map[string]string{"dotnet-version": prof.LanguageVersion("dotnet")}); with != "" {
+			b.WriteString("        with:\n")
+			b.WriteString(with)
+		}
+	}
 
 	for _, s := range pl.Steps {
 		fmt.Fprintf(&b, "      - name: %s\n", s.Name)
@@ -79,7 +117,11 @@ func WorkflowYAML(pl plan.Plan) ([]byte, error) {
 // values. Keys are fixed per call site, so a stable order is chosen here.
 func setupWith(kv map[string]string) string {
 	var order []string
-	for _, k := range []string{"node-version", "cache", "python-version", "go-version", "toolchain"} {
+	for _, k := range []string{
+		"node-version", "cache", "python-version", "go-version", "toolchain",
+		"distribution", "java-version", "ruby-version", "bundler-cache",
+		"php-version", "dotnet-version",
+	} {
 		if _, ok := kv[k]; ok {
 			order = append(order, k)
 		}

@@ -25,6 +25,16 @@ func BuildPlan(p profile.Profile) plan.Plan {
 			steps = append(steps, goSteps(p)...)
 		case "rust":
 			steps = append(steps, rustSteps(p)...)
+		case "java":
+			steps = append(steps, javaSteps(p)...)
+		case "ruby":
+			steps = append(steps, rubySteps(p)...)
+		case "php":
+			steps = append(steps, phpSteps(p)...)
+		case "dotnet":
+			steps = append(steps, dotnetSteps(p)...)
+		case "cpp":
+			steps = append(steps, cppSteps(p)...)
 		}
 	}
 	steps = append(steps, securitySteps(p)...)
@@ -325,6 +335,184 @@ func rustSteps(p profile.Profile) []plan.Step {
 	return steps
 }
 
+func javaSteps(p profile.Profile) []plan.Step {
+	reason := javaReason(p)
+	var testCmd, buildCmd, tool string
+	if hasBuildTool(p, "gradle") {
+		tool = "gradle"
+		base := "gradle"
+		if hasWrapper(p, "gradlew") {
+			base = "./gradlew"
+			reason += "; gradlew wrapper"
+		}
+		testCmd = base + " test"
+		buildCmd = base + " build -x test"
+	} else {
+		tool = "maven"
+		base := "mvn -B"
+		if hasWrapper(p, "mvnw") {
+			base = "./mvnw -B"
+			reason += "; mvnw wrapper"
+		}
+		testCmd = base + " test"
+		buildCmd = base + " package -DskipTests"
+	}
+	return []plan.Step{
+		{
+			ID:       "java-test",
+			Name:     "Run tests (" + tool + ")",
+			Category: plan.CatTest,
+			Commands: []string{testCmd},
+			Reason:   reason,
+		},
+		{
+			ID:       "java-build",
+			Name:     "Build package (" + tool + ")",
+			Category: plan.CatBuild,
+			Commands: []string{buildCmd},
+			Reason:   reason,
+		},
+	}
+}
+
+func rubySteps(p profile.Profile) []plan.Step {
+	reason := rubyReason(p)
+	steps := []plan.Step{
+		{
+			ID:       "ruby-install",
+			Name:     "Install dependencies (bundler)",
+			Category: plan.CatInstall,
+			Commands: []string{"bundle install"},
+			Reason:   reason,
+		},
+	}
+	if contains(p.Linters, "rubocop") {
+		steps = append(steps, plan.Step{
+			ID:       "ruby-lint",
+			Name:     "Lint (rubocop)",
+			Category: plan.CatLint,
+			Commands: []string{"bundle exec rubocop"},
+			Reason:   reason + "; rubocop configured",
+		})
+	}
+	switch {
+	case hasTestRunner(p, "rspec"):
+		steps = append(steps, plan.Step{
+			ID:       "ruby-test",
+			Name:     "Run tests (rspec)",
+			Category: plan.CatTest,
+			Commands: []string{"bundle exec rspec"},
+			Reason:   reason + "; rspec detected",
+		})
+	case hasTestRunner(p, "rake"):
+		steps = append(steps, plan.Step{
+			ID:       "ruby-test",
+			Name:     "Run tests (rake)",
+			Category: plan.CatTest,
+			Commands: []string{"bundle exec rake"},
+			Reason:   reason + "; Rakefile detected",
+		})
+	}
+	return steps
+}
+
+func phpSteps(p profile.Profile) []plan.Step {
+	reason := phpReason(p)
+	steps := []plan.Step{
+		{
+			ID:       "php-install",
+			Name:     "Install dependencies (composer)",
+			Category: plan.CatInstall,
+			Commands: []string{"composer install"},
+			Reason:   reason,
+		},
+	}
+	if hasTestRunner(p, "phpunit") {
+		steps = append(steps, plan.Step{
+			ID:       "php-test",
+			Name:     "Run tests (phpunit)",
+			Category: plan.CatTest,
+			Commands: []string{"vendor/bin/phpunit"},
+			Reason:   reason + "; phpunit detected",
+		})
+	}
+	return steps
+}
+
+func dotnetSteps(p profile.Profile) []plan.Step {
+	reason := dotnetReason(p)
+	steps := []plan.Step{
+		{
+			ID:       "dotnet-install",
+			Name:     "Restore dependencies (dotnet)",
+			Category: plan.CatInstall,
+			Commands: []string{"dotnet restore"},
+			Reason:   reason,
+		},
+	}
+	if hasTestRunner(p, "dotnet") {
+		steps = append(steps, plan.Step{
+			ID:       "dotnet-test",
+			Name:     "Run tests (dotnet test)",
+			Category: plan.CatTest,
+			Commands: []string{"dotnet test --no-build"},
+			Reason:   reason + "; test project detected",
+		})
+	}
+	steps = append(steps, plan.Step{
+		ID:       "dotnet-build",
+		Name:     "Build (dotnet build)",
+		Category: plan.CatBuild,
+		Commands: []string{"dotnet build --no-restore"},
+		Reason:   reason,
+	})
+	return steps
+}
+
+func cppSteps(p profile.Profile) []plan.Step {
+	reason := cppReason(p)
+	var steps []plan.Step
+	switch {
+	case hasTestRunner(p, "ctest"):
+		steps = append(steps, plan.Step{
+			ID:       "cpp-test",
+			Name:     "Run tests (ctest)",
+			Category: plan.CatTest,
+			Commands: []string{"ctest --test-dir build --output-on-failure"},
+			Reason:   reason + "; tests declared in CMakeLists.txt",
+		})
+	case hasTestRunner(p, "make test"):
+		steps = append(steps, plan.Step{
+			ID:       "cpp-test",
+			Name:     "Run tests (make test)",
+			Category: plan.CatTest,
+			Commands: []string{"make test"},
+			Reason:   reason + "; test target declared",
+		})
+	case hasTestRunner(p, "make check"):
+		steps = append(steps, plan.Step{
+			ID:       "cpp-test",
+			Name:     "Run tests (make check)",
+			Category: plan.CatTest,
+			Commands: []string{"make check"},
+			Reason:   reason + "; check target declared",
+		})
+	}
+	buildCmds, name := []string{"make"}, "Build (make)"
+	if hasBuildTool(p, "cmake") {
+		buildCmds = []string{"cmake -B build -DCMAKE_BUILD_TYPE=Release", "cmake --build build"}
+		name = "Build (cmake)"
+	}
+	steps = append(steps, plan.Step{
+		ID:       "cpp-build",
+		Name:     name,
+		Category: plan.CatBuild,
+		Commands: buildCmds,
+		Reason:   reason,
+	})
+	return steps
+}
+
 // securitySteps adds always-optional audit and secret-scan steps per ecosystem.
 func securitySteps(p profile.Profile) []plan.Step {
 	var steps []plan.Step
@@ -418,6 +606,65 @@ func rustReason(p profile.Profile) string {
 	return "rust project detected"
 }
 
+func javaReason(p profile.Profile) string {
+	if hasSource(p, "pom.xml") {
+		return "pom.xml detected"
+	}
+	for _, f := range []string{"build.gradle", "build.gradle.kts"} {
+		if hasSource(p, f) {
+			return f + " detected"
+		}
+	}
+	return "java project detected"
+}
+
+func rubyReason(p profile.Profile) string {
+	if hasSource(p, "Gemfile") {
+		parts := []string{"Gemfile"}
+		if hasLockfile(p, "Gemfile.lock") {
+			parts = append(parts, "Gemfile.lock")
+		}
+		return joinDetected(parts)
+	}
+	return "ruby project detected"
+}
+
+func phpReason(p profile.Profile) string {
+	if hasSource(p, "composer.json") {
+		parts := []string{"composer.json"}
+		if hasLockfile(p, "composer.lock") {
+			parts = append(parts, "composer.lock")
+		}
+		return joinDetected(parts)
+	}
+	return "php project detected"
+}
+
+func dotnetReason(p profile.Profile) string {
+	var parts []string
+	for _, s := range p.Signals {
+		if s.Key == "language" && s.Value == "dotnet" && s.Confidence >= profile.MinConfidence {
+			parts = append(parts, s.Source)
+		}
+	}
+	if len(parts) == 0 {
+		return "dotnet project detected"
+	}
+	return joinDetected(parts)
+}
+
+func cppReason(p profile.Profile) string {
+	if hasSource(p, "CMakeLists.txt") {
+		return "CMakeLists.txt detected"
+	}
+	for _, f := range []string{"Makefile", "makefile"} {
+		if hasSource(p, f) {
+			return f + " detected"
+		}
+	}
+	return "c/c++ project detected"
+}
+
 // monorepoTool returns the detected monorepo orchestrator ("turbo" or
 // "nx"), "" if none was detected at or above MinConfidence.
 func monorepoTool(p profile.Profile) string {
@@ -480,6 +727,29 @@ func hasSignalValue(p profile.Profile, value string) bool {
 		}
 	}
 	return false
+}
+
+// hasSignalKeyValue reports whether a signal with the exact key and value
+// exists at or above MinConfidence.
+func hasSignalKeyValue(p profile.Profile, key, value string) bool {
+	for _, s := range p.Signals {
+		if s.Key == key && s.Value == value && s.Confidence >= profile.MinConfidence {
+			return true
+		}
+	}
+	return false
+}
+
+func hasBuildTool(p profile.Profile, tool string) bool {
+	return hasSignalKeyValue(p, "build_tool", tool)
+}
+
+func hasWrapper(p profile.Profile, wrapper string) bool {
+	return hasSignalKeyValue(p, "wrapper", wrapper)
+}
+
+func hasTestRunner(p profile.Profile, runner string) bool {
+	return hasSignalKeyValue(p, "test_runner", runner)
 }
 
 func contains(slice []string, v string) bool {

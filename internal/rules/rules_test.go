@@ -493,3 +493,322 @@ func TestBuildPlanEmpty(t *testing.T) {
 		t.Fatalf("expected empty plan, got %v", stepIDs(pl))
 	}
 }
+
+func TestBuildPlanJava(t *testing.T) {
+	tests := []struct {
+		name string
+		prof profile.Profile
+		want map[string][]string
+	}{
+		{
+			name: "maven with wrapper",
+			prof: profile.Profile{
+				Languages:      []profile.Language{{Name: "java", VersionHint: "17", Confidence: 0.95}},
+				PackageManager: "maven",
+				Signals: []profile.Signal{
+					{Source: "pom.xml", Key: "language", Value: "java", Confidence: 0.95},
+					{Source: "pom.xml", Key: "build_tool", Value: "maven", Confidence: 0.95},
+					{Source: "mvnw", Key: "wrapper", Value: "mvnw", Confidence: 0.95},
+				},
+			},
+			want: map[string][]string{
+				"java-test":  {"./mvnw -B test"},
+				"java-build": {"./mvnw -B package -DskipTests"},
+			},
+		},
+		{
+			name: "maven without wrapper",
+			prof: profile.Profile{
+				Languages: []profile.Language{{Name: "java", Confidence: 0.95}},
+				Signals: []profile.Signal{
+					{Source: "pom.xml", Key: "language", Value: "java", Confidence: 0.95},
+					{Source: "pom.xml", Key: "build_tool", Value: "maven", Confidence: 0.95},
+				},
+			},
+			want: map[string][]string{
+				"java-test":  {"mvn -B test"},
+				"java-build": {"mvn -B package -DskipTests"},
+			},
+		},
+		{
+			name: "gradle with wrapper",
+			prof: profile.Profile{
+				Languages:      []profile.Language{{Name: "java", VersionHint: "21", Confidence: 0.9}},
+				PackageManager: "gradle",
+				Signals: []profile.Signal{
+					{Source: "build.gradle", Key: "language", Value: "java", Confidence: 0.9},
+					{Source: "build.gradle", Key: "build_tool", Value: "gradle", Confidence: 0.9},
+					{Source: "gradlew", Key: "wrapper", Value: "gradlew", Confidence: 0.95},
+				},
+			},
+			want: map[string][]string{
+				"java-test":  {"./gradlew test"},
+				"java-build": {"./gradlew build -x test"},
+			},
+		},
+		{
+			name: "gradle kotlin dsl without wrapper",
+			prof: profile.Profile{
+				Languages: []profile.Language{{Name: "java", Confidence: 0.9}},
+				Signals: []profile.Signal{
+					{Source: "build.gradle.kts", Key: "language", Value: "java", Confidence: 0.9},
+					{Source: "build.gradle.kts", Key: "build_tool", Value: "gradle", Confidence: 0.9},
+				},
+			},
+			want: map[string][]string{
+				"java-test":  {"gradle test"},
+				"java-build": {"gradle build -x test"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pl := BuildPlan(tt.prof)
+			for id, cmds := range tt.want {
+				assertStep(t, pl, id, cmds, categoryOf(id), false)
+			}
+		})
+	}
+}
+
+func TestBuildPlanJavaReason(t *testing.T) {
+	p := profile.Profile{
+		Languages: []profile.Language{{Name: "java", Confidence: 0.95}},
+		Signals: []profile.Signal{
+			{Source: "pom.xml", Key: "language", Value: "java", Confidence: 0.95},
+			{Source: "mvnw", Key: "wrapper", Value: "mvnw", Confidence: 0.95},
+		},
+	}
+	pl := BuildPlan(p)
+	s := findStep(t, pl, "java-test")
+	want := "pom.xml detected; mvnw wrapper"
+	if s.Reason != want {
+		t.Errorf("reason = %q, want %q", s.Reason, want)
+	}
+}
+
+func TestBuildPlanRuby(t *testing.T) {
+	tests := []struct {
+		name string
+		prof profile.Profile
+		want map[string][]string
+		omit []string
+	}{
+		{
+			name: "rspec with rubocop",
+			prof: profile.Profile{
+				Languages:      []profile.Language{{Name: "ruby", VersionHint: "3.2.2", Confidence: 0.95}},
+				PackageManager: "bundler",
+				TestRunner:     "rspec",
+				Linters:        []string{"rubocop"},
+				Lockfiles:      []string{"Gemfile.lock"},
+				Signals: []profile.Signal{
+					{Source: "Gemfile", Key: "language", Value: "ruby", Confidence: 0.95},
+					{Source: "Gemfile", Key: "test_runner", Value: "rspec", Confidence: 0.9},
+				},
+			},
+			want: map[string][]string{
+				"ruby-install": {"bundle install"},
+				"ruby-lint":    {"bundle exec rubocop"},
+				"ruby-test":    {"bundle exec rspec"},
+			},
+		},
+		{
+			name: "rake fallback",
+			prof: profile.Profile{
+				Languages:  []profile.Language{{Name: "ruby", Confidence: 0.95}},
+				TestRunner: "rake",
+				Signals: []profile.Signal{
+					{Source: "Gemfile", Key: "language", Value: "ruby", Confidence: 0.95},
+					{Source: "Rakefile", Key: "test_runner", Value: "rake", Confidence: 0.85},
+				},
+			},
+			want: map[string][]string{
+				"ruby-install": {"bundle install"},
+				"ruby-test":    {"bundle exec rake"},
+			},
+			omit: []string{"ruby-lint"},
+		},
+		{
+			name: "no test runner declared",
+			prof: profile.Profile{
+				Languages: []profile.Language{{Name: "ruby", Confidence: 0.95}},
+				Signals: []profile.Signal{
+					{Source: "Gemfile", Key: "language", Value: "ruby", Confidence: 0.95},
+				},
+			},
+			want: map[string][]string{"ruby-install": {"bundle install"}},
+			omit: []string{"ruby-test", "ruby-lint"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pl := BuildPlan(tt.prof)
+			for id, cmds := range tt.want {
+				assertStep(t, pl, id, cmds, categoryOf(id), false)
+			}
+			for _, id := range tt.omit {
+				assertNoStep(t, pl, id)
+			}
+		})
+	}
+}
+
+func TestBuildPlanPHP(t *testing.T) {
+	p := profile.Profile{
+		Languages:      []profile.Language{{Name: "php", VersionHint: "8.1", Confidence: 0.95}},
+		PackageManager: "composer",
+		TestRunner:     "phpunit",
+		Lockfiles:      []string{"composer.lock"},
+		Signals: []profile.Signal{
+			{Source: "composer.json", Key: "language", Value: "php", Confidence: 0.95},
+			{Source: "phpunit.xml.dist", Key: "test_runner", Value: "phpunit", Confidence: 0.95},
+		},
+	}
+	pl := BuildPlan(p)
+	assertStep(t, pl, "php-install", []string{"composer install"}, plan.CatInstall, false)
+	assertStep(t, pl, "php-test", []string{"vendor/bin/phpunit"}, plan.CatTest, false)
+	s := findStep(t, pl, "php-install")
+	if want := "composer.json + composer.lock detected"; s.Reason != want {
+		t.Errorf("php-install reason = %q, want %q", s.Reason, want)
+	}
+}
+
+func TestBuildPlanPHPNoTests(t *testing.T) {
+	p := profile.Profile{
+		Languages: []profile.Language{{Name: "php", Confidence: 0.95}},
+		Signals: []profile.Signal{
+			{Source: "composer.json", Key: "language", Value: "php", Confidence: 0.95},
+		},
+	}
+	pl := BuildPlan(p)
+	assertStep(t, pl, "php-install", []string{"composer install"}, plan.CatInstall, false)
+	assertNoStep(t, pl, "php-test")
+}
+
+func TestBuildPlanDotnet(t *testing.T) {
+	p := profile.Profile{
+		Languages:  []profile.Language{{Name: "dotnet", VersionHint: "8.0.100", Confidence: 0.95}},
+		TestRunner: "dotnet",
+		Signals: []profile.Signal{
+			{Source: "Demo.sln", Key: "language", Value: "dotnet", Confidence: 0.95},
+			{Source: "Demo.csproj", Key: "language", Value: "dotnet", Confidence: 0.9},
+			{Source: "Demo.Tests.csproj", Key: "test_runner", Value: "dotnet", Confidence: 0.9},
+		},
+	}
+	pl := BuildPlan(p)
+	assertStep(t, pl, "dotnet-install", []string{"dotnet restore"}, plan.CatInstall, false)
+	assertStep(t, pl, "dotnet-build", []string{"dotnet build --no-restore"}, plan.CatBuild, false)
+	assertStep(t, pl, "dotnet-test", []string{"dotnet test --no-build"}, plan.CatTest, false)
+	s := findStep(t, pl, "dotnet-install")
+	if want := "Demo.sln + Demo.csproj detected"; s.Reason != want {
+		t.Errorf("dotnet-install reason = %q, want %q", s.Reason, want)
+	}
+}
+
+func TestBuildPlanDotnetNoTests(t *testing.T) {
+	p := profile.Profile{
+		Languages: []profile.Language{{Name: "dotnet", Confidence: 0.9}},
+		Signals: []profile.Signal{
+			{Source: "Demo.csproj", Key: "language", Value: "dotnet", Confidence: 0.9},
+		},
+	}
+	pl := BuildPlan(p)
+	assertStep(t, pl, "dotnet-install", []string{"dotnet restore"}, plan.CatInstall, false)
+	assertStep(t, pl, "dotnet-build", []string{"dotnet build --no-restore"}, plan.CatBuild, false)
+	assertNoStep(t, pl, "dotnet-test")
+}
+
+func TestBuildPlanCpp(t *testing.T) {
+	tests := []struct {
+		name string
+		prof profile.Profile
+		want map[string][]string
+		omit []string
+	}{
+		{
+			name: "cmake with tests",
+			prof: profile.Profile{
+				Languages:  []profile.Language{{Name: "cpp", VersionHint: "17", Confidence: 0.95}},
+				TestRunner: "ctest",
+				Signals: []profile.Signal{
+					{Source: "CMakeLists.txt", Key: "language", Value: "cpp", Confidence: 0.95},
+					{Source: "CMakeLists.txt", Key: "build_tool", Value: "cmake", Confidence: 0.95},
+					{Source: "CMakeLists.txt", Key: "test_runner", Value: "ctest", Confidence: 0.9},
+				},
+			},
+			want: map[string][]string{
+				"cpp-test":  {"ctest --test-dir build --output-on-failure"},
+				"cpp-build": {"cmake -B build -DCMAKE_BUILD_TYPE=Release", "cmake --build build"},
+			},
+		},
+		{
+			name: "cmake without tests",
+			prof: profile.Profile{
+				Languages: []profile.Language{{Name: "cpp", Confidence: 0.95}},
+				Signals: []profile.Signal{
+					{Source: "CMakeLists.txt", Key: "language", Value: "cpp", Confidence: 0.95},
+					{Source: "CMakeLists.txt", Key: "build_tool", Value: "cmake", Confidence: 0.95},
+				},
+			},
+			want: map[string][]string{
+				"cpp-build": {"cmake -B build -DCMAKE_BUILD_TYPE=Release", "cmake --build build"},
+			},
+			omit: []string{"cpp-test"},
+		},
+		{
+			name: "makefile with test target",
+			prof: profile.Profile{
+				Languages:  []profile.Language{{Name: "cpp", Confidence: 0.7}},
+				TestRunner: "make test",
+				Signals: []profile.Signal{
+					{Source: "Makefile", Key: "language", Value: "cpp", Confidence: 0.7},
+					{Source: "Makefile", Key: "build_tool", Value: "make", Confidence: 0.7},
+					{Source: "Makefile", Key: "test_runner", Value: "make test", Confidence: 0.7},
+				},
+			},
+			want: map[string][]string{
+				"cpp-test":  {"make test"},
+				"cpp-build": {"make"},
+			},
+		},
+		{
+			name: "makefile with check target",
+			prof: profile.Profile{
+				Languages: []profile.Language{{Name: "cpp", Confidence: 0.7}},
+				Signals: []profile.Signal{
+					{Source: "Makefile", Key: "language", Value: "cpp", Confidence: 0.7},
+					{Source: "Makefile", Key: "build_tool", Value: "make", Confidence: 0.7},
+					{Source: "Makefile", Key: "test_runner", Value: "make check", Confidence: 0.7},
+				},
+			},
+			want: map[string][]string{
+				"cpp-test":  {"make check"},
+				"cpp-build": {"make"},
+			},
+		},
+		{
+			name: "makefile without test target",
+			prof: profile.Profile{
+				Languages: []profile.Language{{Name: "cpp", Confidence: 0.7}},
+				Signals: []profile.Signal{
+					{Source: "Makefile", Key: "language", Value: "cpp", Confidence: 0.7},
+					{Source: "Makefile", Key: "build_tool", Value: "make", Confidence: 0.7},
+				},
+			},
+			want: map[string][]string{"cpp-build": {"make"}},
+			omit: []string{"cpp-test"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pl := BuildPlan(tt.prof)
+			for id, cmds := range tt.want {
+				assertStep(t, pl, id, cmds, categoryOf(id), false)
+			}
+			for _, id := range tt.omit {
+				assertNoStep(t, pl, id)
+			}
+		})
+	}
+}

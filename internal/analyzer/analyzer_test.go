@@ -237,3 +237,220 @@ func TestMissingRoot(t *testing.T) {
 		t.Error("expected error for missing root")
 	}
 }
+
+func TestJavaMaven(t *testing.T) {
+	prof, err := analyzer.Analyze(fixture(t, "java-maven"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !prof.HasLanguage("java") {
+		t.Fatalf("java not detected: %+v", prof.Languages)
+	}
+	if got := prof.LanguageVersion("java"); got != "17" {
+		t.Errorf("version hint = %q, want 17", got)
+	}
+	if prof.PackageManager != "maven" {
+		t.Errorf("PackageManager = %q, want maven", prof.PackageManager)
+	}
+	if !hasSignal(prof, "build_tool", "maven") {
+		t.Error("missing build_tool=maven signal")
+	}
+	if !hasSignal(prof, "wrapper", "mvnw") {
+		t.Error("missing wrapper=mvnw signal")
+	}
+}
+
+func TestJavaGradle(t *testing.T) {
+	prof, err := analyzer.Analyze(fixture(t, "java-gradle"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !prof.HasLanguage("java") {
+		t.Fatalf("java not detected: %+v", prof.Languages)
+	}
+	if got := prof.LanguageVersion("java"); got != "21" {
+		t.Errorf("version hint = %q, want 21", got)
+	}
+	if prof.PackageManager != "gradle" {
+		t.Errorf("PackageManager = %q, want gradle", prof.PackageManager)
+	}
+	if !hasSignal(prof, "build_tool", "gradle") {
+		t.Error("missing build_tool=gradle signal")
+	}
+	if !hasSignal(prof, "wrapper", "gradlew") {
+		t.Error("missing wrapper=gradlew signal")
+	}
+}
+
+func TestRubyRspec(t *testing.T) {
+	prof, err := analyzer.Analyze(fixture(t, "ruby-rspec"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !prof.HasLanguage("ruby") {
+		t.Fatalf("ruby not detected: %+v", prof.Languages)
+	}
+	if got := prof.LanguageVersion("ruby"); got != "3.2.2" {
+		t.Errorf("version hint = %q, want 3.2.2", got)
+	}
+	if prof.PackageManager != "bundler" {
+		t.Errorf("PackageManager = %q, want bundler", prof.PackageManager)
+	}
+	if !hasString(prof.Lockfiles, "Gemfile.lock") {
+		t.Errorf("Lockfiles = %v, want Gemfile.lock", prof.Lockfiles)
+	}
+	if prof.TestRunner != "rspec" {
+		t.Errorf("TestRunner = %q, want rspec", prof.TestRunner)
+	}
+	if !hasString(prof.Linters, "rubocop") {
+		t.Errorf("Linters = %v, want rubocop", prof.Linters)
+	}
+}
+
+func TestRubyRake(t *testing.T) {
+	prof, err := analyzer.Analyze(fixture(t, "ruby-rake"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !prof.HasLanguage("ruby") {
+		t.Fatalf("ruby not detected: %+v", prof.Languages)
+	}
+	// .ruby-version wins when the Gemfile has no ruby directive
+	if got := prof.LanguageVersion("ruby"); got != "3.3.0" {
+		t.Errorf("version hint = %q, want 3.3.0", got)
+	}
+	if prof.TestRunner != "rake" {
+		t.Errorf("TestRunner = %q, want rake", prof.TestRunner)
+	}
+	if hasString(prof.Linters, "rubocop") {
+		t.Errorf("Linters = %v, want no rubocop without .rubocop.yml", prof.Linters)
+	}
+}
+
+func TestPHPComposer(t *testing.T) {
+	prof, err := analyzer.Analyze(fixture(t, "php-composer"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !prof.HasLanguage("php") {
+		t.Fatalf("php not detected: %+v", prof.Languages)
+	}
+	if got := prof.LanguageVersion("php"); got != "8.1" {
+		t.Errorf("version hint = %q, want 8.1", got)
+	}
+	if prof.PackageManager != "composer" {
+		t.Errorf("PackageManager = %q, want composer", prof.PackageManager)
+	}
+	if !hasString(prof.Lockfiles, "composer.lock") {
+		t.Errorf("Lockfiles = %v, want composer.lock", prof.Lockfiles)
+	}
+	if prof.TestRunner != "phpunit" {
+		t.Errorf("TestRunner = %q, want phpunit (require-dev)", prof.TestRunner)
+	}
+}
+
+func TestPHPPhpunitXML(t *testing.T) {
+	prof, err := analyzer.Analyze(fixture(t, "php-phpunit-xml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !prof.HasLanguage("php") {
+		t.Fatalf("php not detected: %+v", prof.Languages)
+	}
+	if got := prof.LanguageVersion("php"); got != "8.2" {
+		t.Errorf("version hint = %q, want 8.2", got)
+	}
+	if !hasSignal(prof, "test_runner", "phpunit") {
+		t.Error("missing test_runner=phpunit signal from phpunit.xml.dist")
+	}
+	if hasString(prof.Lockfiles, "composer.lock") {
+		t.Errorf("Lockfiles = %v, want no composer.lock", prof.Lockfiles)
+	}
+}
+
+func TestDotnetSln(t *testing.T) {
+	prof, err := analyzer.Analyze(fixture(t, "dotnet-sln"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !prof.HasLanguage("dotnet") {
+		t.Fatalf("dotnet not detected: %+v", prof.Languages)
+	}
+	// global.json sdk version wins over TargetFramework
+	if got := prof.LanguageVersion("dotnet"); got != "8.0.100" {
+		t.Errorf("version hint = %q, want 8.0.100", got)
+	}
+	if prof.PackageManager != "nuget" {
+		t.Errorf("PackageManager = %q, want nuget", prof.PackageManager)
+	}
+	if !hasSignal(prof, "test_runner", "dotnet") {
+		t.Error("missing test_runner=dotnet signal (test project present)")
+	}
+}
+
+func TestDotnetNoTests(t *testing.T) {
+	prof, err := analyzer.Analyze(fixture(t, "dotnet-no-tests"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !prof.HasLanguage("dotnet") {
+		t.Fatalf("dotnet not detected: %+v", prof.Languages)
+	}
+	if got := prof.LanguageVersion("dotnet"); got != "net7.0" {
+		t.Errorf("version hint = %q, want net7.0 (TargetFramework)", got)
+	}
+	if hasSignal(prof, "test_runner", "dotnet") {
+		t.Error("unexpected test_runner=dotnet signal without a test project")
+	}
+}
+
+func TestCppCMake(t *testing.T) {
+	prof, err := analyzer.Analyze(fixture(t, "cpp-cmake"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !prof.HasLanguage("cpp") {
+		t.Fatalf("cpp not detected: %+v", prof.Languages)
+	}
+	// CMAKE_CXX_STANDARD_REQUIRED must not shadow CMAKE_CXX_STANDARD
+	if got := prof.LanguageVersion("cpp"); got != "17" {
+		t.Errorf("version hint = %q, want 17", got)
+	}
+	if !hasSignal(prof, "build_tool", "cmake") {
+		t.Error("missing build_tool=cmake signal")
+	}
+	if !hasSignal(prof, "test_runner", "ctest") {
+		t.Error("missing test_runner=ctest signal (enable_testing present)")
+	}
+}
+
+func TestCppMake(t *testing.T) {
+	prof, err := analyzer.Analyze(fixture(t, "cpp-make"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !prof.HasLanguage("cpp") {
+		t.Fatalf("cpp not detected: %+v", prof.Languages)
+	}
+	for _, l := range prof.Languages {
+		if l.Name == "cpp" && l.Confidence != 0.7 {
+			t.Errorf("cpp confidence = %v, want 0.7 (no manifest)", l.Confidence)
+		}
+	}
+	if !hasSignal(prof, "build_tool", "make") {
+		t.Error("missing build_tool=make signal")
+	}
+	if !hasSignal(prof, "test_runner", "make test") {
+		t.Error("missing test_runner=make test signal (test target present)")
+	}
+}
+
+func TestCppMakeNoSources(t *testing.T) {
+	prof, err := analyzer.Analyze(fixture(t, "cpp-make-no-src"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prof.HasLanguage("cpp") {
+		t.Errorf("cpp detected without sources: %+v", prof.Languages)
+	}
+}

@@ -27,6 +27,11 @@ func Analyze(root string) (profile.Profile, error) {
 	detectPython(root, &prof)
 	detectGo(root, &prof)
 	detectRust(root, &prof)
+	detectJava(root, &prof)
+	detectRuby(root, &prof)
+	detectPHP(root, &prof)
+	detectDotnet(root, &prof)
+	detectCpp(root, &prof)
 	detectCommon(root, &prof)
 	prof.SortLanguages()
 	return prof, nil
@@ -77,4 +82,22 @@ func cleanVersion(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.TrimLeft(s, "^~>=<!v ")
 	return s
+}
+
+// xmlTagValue extracts the text of the first <tag>...</tag> occurrence via
+// line scanning, e.g. "<TargetFramework>net8.0</TargetFramework>" -> "net8.0".
+func xmlTagValue(content, tag string) string {
+	open, close := "<"+tag+">", "</"+tag+">"
+	for _, line := range strings.Split(content, "\n") {
+		t := strings.TrimSpace(line)
+		i := strings.Index(t, open)
+		if i < 0 {
+			continue
+		}
+		rest := t[i+len(open):]
+		if j := strings.Index(rest, close); j >= 0 {
+			return strings.TrimSpace(rest[:j])
+		}
+	}
+	return ""
 }
