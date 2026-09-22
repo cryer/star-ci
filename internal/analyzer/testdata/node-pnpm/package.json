@@ -1,0 +1,16 @@
+{
+  "name": "demo",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "vitest run",
+    "build": "next build"
+  },
+  "dependencies": {
+    "next": "14.0.0"
+  },
+  "devDependencies": {
+    "vitest": "^1.2.0",
+    "typescript": "^5.3.0",
+    "eslint": "^8.56.0"
+  }
+}

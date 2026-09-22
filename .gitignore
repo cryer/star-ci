@@ -1,0 +1,16 @@
+# binaries
+star-ci
+star-ci.exe
+*.exe
+/dist/
+
+# Go
+/vendor/
+*.test
+*.out
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
