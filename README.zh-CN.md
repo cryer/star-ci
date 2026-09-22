@@ -85,6 +85,8 @@ star-ci generate -o ci.yml  # 自定义输出路径
 
 生成的 YAML 是一份标准 GitHub Actions workflow，包含 `actions/checkout`、对应语言的 `setup-node/setup-python/setup-go`（含版本推断与依赖缓存），以及每个 CI 步骤。你可以提交后继续手动编辑。
 
+依赖缓存以锁文件为键：自带缓存的生态（node、python、go、java、ruby）会渲染正确的 `cache` / `cache-dependency-path` 配置，Rust/PHP/.NET 则生成显式的 `actions/cache` 步骤（含 Cargo `target` 构建产物缓存）。monorepo 矩阵 job 中缓存路径会按 workspace 加前缀。
+
 ### 方式三：本地 push 前自检
 
 ```bash
@@ -122,8 +124,20 @@ star-ci analyze --json    # 机器可读的完整 ProjectProfile
 | Python | `pyproject.toml` / `requirements.txt` / `setup.py` | uv/poetry/pipenv/pip | pytest | ruff / black | mypy | — |
 | Go | `go.mod` | go modules | 存在 `*_test.go` → `go test ./...` | golangci-lint（需 `.golangci.yml`） | `go vet ./...` | `go build ./...` |
 | Rust | `Cargo.toml` | cargo | `cargo test` | clippy / rustfmt（需配置文件） | — | `cargo build`（有 `Cargo.lock` 时 `--locked`） |
+| Java | `pom.xml` / `build.gradle(.kts)` | maven / gradle（优先 wrapper） | `mvn -B test` / `gradle test` | — | — | `mvn -B package -DskipTests` / `gradle build -x test` |
+| Ruby | `Gemfile` | bundler | rspec（在 Gemfile 中）/ `rake` | rubocop（需 `.rubocop.yml`） | — | — |
+| PHP | `composer.json` | composer | phpunit（`phpunit.xml(.dist)` 或 require-dev） | — | — | — |
+| .NET | `*.sln` / `*.csproj` | nuget | `dotnet test`（需存在测试项目） | — | — | `dotnet build` |
+| C/C++ | `CMakeLists.txt`，或 `Makefile` + C/C++ 源码 | — | `ctest`（需 `enable_testing()`）/ `make test` | — | — | `cmake --build` / `make` |
 
 Node monorepo 根也会被识别：`turbo.json` / `nx.json` 会让 test 与 build 步骤改走 `turbo run` / `nx run-many`，框架（`next`、`nuxt`、`remix`、`vite`）会记录在步骤的检测依据中。
+
+### Monorepo workspace
+
+仓库根的 workspace 声明会被检测——`package.json` 的 `workspaces`、`pnpm-workspace.yaml` 的 `packages`、Cargo.toml 的 `[workspace] members`、`go.work` 的 `use`——glob 模式会展开为真实目录（缺少对应 manifest 的条目会被跳过）。`analyze` 会列出检测到的 workspace。
+
+- `star-ci run --changed-since <git-ref>` 通过 `git diff --name-only <ref>...HEAD` 计算变更文件，只对受影响的 workspace 分别 analyze 并执行（落在所有 workspace 之外的变更——如根 lockfile、根 manifest——视为影响全部）。零变更时成功退出且不执行任何步骤；任一 workspace 失败即中止（fail-fast）。未检测到 workspace 时该 flag 报错。依赖 git。
+- `star-ci generate` 在所有 workspace 步骤一致时渲染单个带 `strategy.matrix.workspace` 的 job（每个实例以 `working-directory: ${{ matrix.workspace }}` 执行）；各 workspace 计划不同则退化为每 workspace 一个 job，job 名含 workspace 路径。
 
 **通用横切步骤（所有仓库，optional）：**
 
@@ -139,6 +153,7 @@ star-ci 默认零配置，但仓库根目录放一个最小 `.star-ci.yml` 即�
 
 ```yaml
 confidence: 0.7          # 调高/调低检测置信度阈值（默认 0.5）
+coverage: 80             # 实测行覆盖率低于该百分比（0-100）时 run 失败
 disable:                 # 按 ID 禁用推断出的步骤
   - node-security
 append:                  # 追加自定义步骤
@@ -152,6 +167,8 @@ append:                  # 追加自定义步骤
 
 配置生效时 `analyze` 会打印一行提示；`run` 与 `generate` 自动遵循。
 
+`coverage` 阈值仅作用于 `run`：全部步骤通过后，star-ci 会查找已知的覆盖率报告——`coverage/coverage-summary.json`（vitest/jest）、`coverage.xml`（pytest-cov/coverage.py）或 `cover.out` / `coverage.out`（`go test -coverprofile`）——实测行覆盖率低于声明百分比则 run 失败。存在多份报告时取最低值；没有报告则跳过检查（说明测试未开启覆盖率）。
+
 ## CI 报告（GitHub Job Summary）
 
 在 GitHub Actions 中，`star-ci run` 会向 Job Summary（`$GITHUB_STEP_SUMMARY`）追加 Markdown 报告：检测到的画像、带检测依据的步骤结果表，以及可折叠的失败摘要（失败步骤输出的尾部）。本地运行时，失败步骤的错误信息同样附带该摘要。
@@ -162,7 +179,7 @@ append:                  # 追加自定义步骤
 cmd/star-ci/        CLI 入口（analyze / run / generate）
 internal/profile/   项目画像类型（ProjectProfile / Signal）——核心契约
 internal/plan/      CI 步骤与计划类型（Step / Plan / Category）
-internal/analyzer/  信号扫描器（node / python / go / rust / common）
+internal/analyzer/  信号扫描器（node / python / go / rust / common）+ workspace 检测（workspaces.go）
 internal/config/    可选的 .star-ci.yml 覆盖配置（禁用/追加步骤、置信度阈值）
 internal/rules/     规则引擎：画像 → 步骤
 internal/runner/    本地执行器（fail-fast + optional 警告）
@@ -184,10 +201,10 @@ Dockerfile          容器镜像
 **v2 —— 生态与规模**
 
 - [x] Rust（`Cargo.toml`）
-- [ ] Java（Maven/Gradle）、Ruby、PHP、.NET
-- [ ] monorepo workspace 检测与路径过滤（只跑受影响的包，矩阵 job）
-- [ ] 测试产出覆盖率报告时的阈值检查
-- [ ] 更聪明的缓存（锁文件 keyed 依赖缓存、构建产物缓存）
+- [x] Java（Maven/Gradle）、Ruby、PHP、.NET、C/C++（CMake/Make）
+- [x] monorepo workspace 检测与路径过滤（只跑受影响的包，矩阵 job）
+- [x] 测试产出覆盖率报告时的阈值检查
+- [x] 更聪明的缓存（锁文件 keyed 依赖缓存、构建产物缓存）
 
 **v3 —— 平台化**
 

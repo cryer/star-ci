@@ -85,6 +85,8 @@ star-ci generate -o ci.yml  # custom output path
 
 The generated YAML is a standard GitHub Actions workflow: `actions/checkout`, the matching `setup-node`/`setup-python`/`setup-go` (with version inference and dependency caching), and one step per CI task. Commit it and keep editing by hand if you like.
 
+Dependency caching is lockfile-keyed: ecosystems with built-in setup caching (node, python, go, java, ruby) get the right `cache` / `cache-dependency-path` settings, and Rust/PHP/.NET get explicit `actions/cache` steps (including the Cargo `target` build-artifact cache). In monorepo matrix jobs, cache paths are prefixed per workspace.
+
 ### Option 3: Local pre-push self-check
 
 ```bash
@@ -122,8 +124,20 @@ star-ci analyze --json    # machine-readable full ProjectProfile
 | Python | `pyproject.toml` / `requirements.txt` / `setup.py` | uv/poetry/pipenv/pip | pytest | ruff / black | mypy | — |
 | Go | `go.mod` | go modules | any `*_test.go` → `go test ./...` | golangci-lint (requires `.golangci.yml`) | `go vet ./...` | `go build ./...` |
 | Rust | `Cargo.toml` | cargo | `cargo test` | clippy / rustfmt (config file required) | — | `cargo build` (`--locked` with `Cargo.lock`) |
+| Java | `pom.xml` / `build.gradle(.kts)` | maven / gradle (wrapper preferred) | `mvn -B test` / `gradle test` | — | — | `mvn -B package -DskipTests` / `gradle build -x test` |
+| Ruby | `Gemfile` | bundler | rspec (in Gemfile) / `rake` | rubocop (requires `.rubocop.yml`) | — | — |
+| PHP | `composer.json` | composer | phpunit (`phpunit.xml(.dist)` or require-dev) | — | — | — |
+| .NET | `*.sln` / `*.csproj` | nuget | `dotnet test` (test project required) | — | — | `dotnet build` |
+| C/C++ | `CMakeLists.txt`, or `Makefile` + C/C++ sources | — | `ctest` (requires `enable_testing()`) / `make test` | — | — | `cmake --build` / `make` |
 
 Node monorepo roots are recognized too: `turbo.json` / `nx.json` route test & build through `turbo run` / `nx run-many`, and frameworks (`next`, `nuxt`, `remix`, `vite`) are recorded in the step rationale.
+
+### Monorepo workspaces
+
+Workspace declarations are detected at the repo root — `package.json` `workspaces`, `pnpm-workspace.yaml` `packages`, Cargo.toml `[workspace] members`, `go.work` `use` — and glob patterns are expanded to real directories (entries without the matching manifest are skipped). `analyze` lists the detected workspaces.
+
+- `star-ci run --changed-since <git-ref>` computes changed files via `git diff --name-only <ref>...HEAD` and only analyzes + runs the affected workspaces (a changed file outside every workspace — e.g. a root lockfile or manifest — affects all of them). Zero changed files exits successfully without running anything; a failing workspace aborts the run (fail-fast). Without detected workspaces the flag is an error. Requires git.
+- `star-ci generate` renders one job with a `strategy.matrix.workspace` when every workspace yields the same steps (each instance runs them with `working-directory: ${{ matrix.workspace }}`); when the per-workspace plans differ, it falls back to one job per workspace named after the workspace path.
 
 **Cross-cutting steps (all repos, optional):**
 
@@ -139,6 +153,7 @@ star-ci is zero-config by default, but a minimal `.star-ci.yml` at the repo root
 
 ```yaml
 confidence: 0.7          # raise/lower the detection threshold (default 0.5)
+coverage: 80             # run fails when measured line coverage is below this (0-100)
 disable:                 # drop inferred steps by ID
   - node-security
 append:                  # add your own steps
@@ -152,6 +167,8 @@ append:                  # add your own steps
 
 `analyze` prints a line when a config is in effect; `run` and `generate` honor it automatically.
 
+The `coverage` threshold only applies to `run`: after all steps pass, star-ci looks for a known coverage report — `coverage/coverage-summary.json` (vitest/jest), `coverage.xml` (pytest-cov/coverage.py), or `cover.out` / `coverage.out` (`go test -coverprofile`) — and fails the run when the measured line coverage is below the declared percentage. With several reports the lowest percentage wins; with no report the check is skipped (tests simply did not emit coverage).
+
 ## CI reports (GitHub Job Summary)
 
 Inside GitHub Actions, `star-ci run` appends a Markdown report to the [Job Summary](https://github.blog/news-insights/product-news/supercharging-github-actions-with-job-summaries/) (`$GITHUB_STEP_SUMMARY`): the detected profile, a per-step result table with each step's detection rationale, and collapsible failure digests (the tail of the failed step's output). Locally, a failing step's error message carries the same digest.
@@ -162,8 +179,8 @@ Inside GitHub Actions, `star-ci run` appends a Markdown report to the [Job Summa
 cmd/star-ci/        CLI entrypoint (analyze / run / generate)
 internal/profile/   Project profile types (ProjectProfile / Signal) — the core contract
 internal/plan/      CI step & plan types (Step / Plan / Category)
-internal/analyzer/  Signal scanners (node / python / go / rust / common)
-internal/config/    Optional .star-ci.yml overrides (disable/append steps, confidence)
+internal/analyzer/  Signal scanners (node / python / go / rust / common) + workspace detection (workspaces.go)
+internal/config/    Optional .star-ci.yml overrides (disable/append steps, confidence, coverage)
 internal/rules/     Rule engine: profile → steps
 internal/runner/    Local executor (fail-fast + optional warnings)
 internal/render/    Plan → GitHub Actions YAML
@@ -184,10 +201,10 @@ Dockerfile          Container image
 **v2 — ecosystems & scale**
 
 - [x] Rust (`Cargo.toml`)
-- [ ] Java (Maven/Gradle), Ruby, PHP, .NET
-- [ ] Monorepo workspace detection + path filtering (only run CI for affected packages, matrix jobs)
-- [ ] Coverage thresholds when tests emit coverage reports
-- [ ] Smarter caching (lockfile-keyed dependency caches, build artifact caches)
+- [x] Java (Maven/Gradle), Ruby, PHP, .NET, C/C++ (CMake/Make)
+- [x] Monorepo workspace detection + path filtering (only run CI for affected packages, matrix jobs)
+- [x] Coverage thresholds when tests emit coverage reports
+- [x] Smarter caching (lockfile-keyed dependency caches, build artifact caches)
 
 **v3 — platform**
 

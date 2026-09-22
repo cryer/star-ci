@@ -33,13 +33,13 @@ go build -o star-ci ./cmd/star-ci   # 产出 CLI 二进制
 | 路径 | 职责 |
 |---|---|
 | `cmd/star-ci/` | CLI 入口与子命令 |
-| `internal/profile/` | ProjectProfile / Signal 类型 |
+| `internal/profile/` | ProjectProfile / Signal / Workspace 类型（含 AffectedWorkspaces 变更→受影响 workspace 纯函数） |
 | `internal/plan/` | Step / Plan / Category 与排序 |
-| `internal/analyzer/` | 信号扫描（node.go / python.go / golang.go / rust.go / common.go），测试用 testdata fixtures |
-| `internal/config/` | 可选 `.star-ci.yml` 覆盖配置（禁用/追加步骤、置信度阈值，行扫描解析） |
+| `internal/analyzer/` | 信号扫描（node.go / python.go / golang.go / rust.go / common.go）+ workspace 检测（workspaces.go：package.json workspaces / pnpm-workspace.yaml / Cargo.toml [workspace] / go.work，glob 展开），测试用 testdata fixtures |
+| `internal/config/` | 可选 `.star-ci.yml` 覆盖配置（禁用/追加步骤、置信度阈值、coverage 覆盖率阈值，行扫描解析） |
 | `internal/rules/` | BuildPlan：画像 → 步骤 |
-| `internal/runner/` | Run（fail-fast 执行）/ Explain（干跑打印）/ GitHub Job Summary 报告（summary.go） |
-| `internal/render/` | WorkflowYAML：计划 → workflow YAML（手工渲染，2 空格缩进） |
+| `internal/runner/` | Run（fail-fast 执行）/ Explain（干跑打印）/ GitHub Job Summary 报告（summary.go）/ git.go（ChangedFiles：`git diff --name-only <ref>...HEAD`） |
+| `internal/render/` | WorkflowYAML：计划 → workflow YAML；WorkflowMatrixYAML：多 workspace 计划 → matrix job（步骤一致时合并，否则退化为每 workspace 一个 job），手工渲染，2 空格缩进；lockfile 键控缓存：setup-node/pip/poetry/go/java 用 setup-* 内建 cache，rust/php/dotnet 无内建缓存时渲染 actions/cache@v4（有对应 lockfile 才渲染，matrix 场景 hashFiles 用 format('{0}/...', matrix.workspace) 前缀） |
 | `action.yml` / `Dockerfile` | GitHub Action（composite）与容器镜像 |
 
 ## 如何扩展
@@ -52,4 +52,4 @@ go build -o star-ci ./cmd/star-ci   # 产出 CLI 二进制
 
 **新增通用步骤**：只需在 `rules.go` 追加规则函数（安全类记得 `Optional: true`）。
 
-**用户覆盖**：`.star-ci.yml`（`internal/config`）可禁用/追加步骤、调整置信度阈值；改 plan 契约时需同步 `config.Apply`。
+**用户覆盖**：`.star-ci.yml`（`internal/config`）可禁用/追加步骤、调整置信度阈值、声明 `coverage` 行覆盖率阈值（仅 `run` 生效：有已知报告才检查，低于阈值 run 失败）；改 plan 契约时需同步 `config.Apply`。
