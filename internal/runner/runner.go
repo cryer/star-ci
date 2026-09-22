@@ -2,6 +2,7 @@
 package runner
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -17,27 +18,41 @@ import (
 func Run(ctx context.Context, root string, pl plan.Plan, w io.Writer) error {
 	printHeader(pl, w)
 	passed, warnings := 0, 0
-	for _, s := range pl.Steps {
+	results := make([]StepResult, 0, len(pl.Steps))
+	for i, s := range pl.Steps {
 		printStep(s, w)
+		var capture bytes.Buffer
 		failed := false
 		for _, c := range s.Commands {
-			if err := runCommand(ctx, root, c, w); err != nil {
+			if err := runCommand(ctx, root, c, io.MultiWriter(w, &capture)); err != nil {
 				failed = true
 				if s.Optional {
 					warnings++
 					fmt.Fprintf(w, "    warning: optional step %s failed: %v\n", s.ID, err)
+					results = append(results, StepResult{Step: s, Status: StatusWarned, Output: capture.String()})
 				} else {
 					fmt.Fprintf(w, "    failure: step %s failed: %v\n", s.ID, err)
-					return fmt.Errorf("step %s (%s) failed: %w", s.ID, s.Name, err)
+					results = append(results, StepResult{Step: s, Status: StatusFailed, Output: capture.String()})
+					for _, rest := range pl.Steps[i+1:] {
+						results = append(results, StepResult{Step: rest, Status: StatusSkipped})
+					}
+					err = fmt.Errorf("step %s (%s) failed: %w", s.ID, s.Name, err)
+					if d := Digest(capture.String(), DigestLines); d != "" {
+						err = fmt.Errorf("%w\n\nfailure digest:\n%s", err, d)
+					}
+					writeStepSummary(pl, results, w)
+					return err
 				}
 				break
 			}
 		}
 		if !failed {
 			passed++
+			results = append(results, StepResult{Step: s, Status: StatusPassed, Output: capture.String()})
 		}
 	}
 	fmt.Fprintf(w, "star-ci: %d steps passed, %d optional warnings\n", passed, warnings)
+	writeStepSummary(pl, results, w)
 	return nil
 }
 
