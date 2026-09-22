@@ -146,8 +146,22 @@ Dockerfile          Container image
 
 ## Roadmap
 
-- [ ] `.star-ci.yml` minimal override config (disable/append steps)
-- [ ] Rust / Java / Ruby ecosystems
-- [ ] Monorepo workspace detection + path filtering (only run CI for affected packages)
-- [ ] Coverage thresholds
-- [ ] GitHub App: auto-inject workflows, PR comment reports, re-generate PRs on config drift
+**v1.x — hardening (current focus)**
+
+- [x] `run --dry-run`: print the inferred plan without executing
+- [ ] `.star-ci.yml` minimal override config (disable/append steps, tune confidence threshold)
+- [ ] Reporter: GitHub Job Summary + PR comments with failure digests and the detection rationale
+- [ ] Richer Node signals (turbo/nx monorepo roots, framework-specific build commands)
+
+**v2 — ecosystems & scale**
+
+- [ ] Rust (`Cargo.toml`), Java (Maven/Gradle), Ruby, PHP, .NET
+- [ ] Monorepo workspace detection + path filtering (only run CI for affected packages, matrix jobs)
+- [ ] Coverage thresholds when tests emit coverage reports
+- [ ] Smarter caching (lockfile-keyed dependency caches, build artifact caches)
+
+**v3 — platform**
+
+- [ ] GitHub App: auto-inject workflows, PR status reports, re-generate PRs on config drift
+- [ ] Data-driven rule packs (YAML templates) so the community can contribute ecosystems
+- [ ] Self-hosted runner & container-image-based execution profiles

@@ -146,8 +146,22 @@ Dockerfile          容器镜像
 
 ## 路线图
 
-- [ ] `.star-ci.yml` 最小覆盖配置（禁用/追加步骤）
-- [ ] Rust / Java / Ruby 生态
-- [ ] monorepo workspace 检测与路径过滤（只跑受影响的包）
-- [ ] 覆盖率阈值检查
-- [ ] GitHub App：自动注入 workflow、PR 评论报告、配置漂移后 re-generate PR
+**v1.x —— 加固（当前重点）**
+
+- [x] `run --dry-run`：只打印推断出的计划，不执行
+- [ ] `.star-ci.yml` 最小覆盖配置（禁用/追加步骤、调整置信度阈值）
+- [ ] Reporter：GitHub Job Summary + PR 评论（失败摘要 + 检测依据）
+- [ ] 更丰富的 Node 信号（turbo/nx monorepo 根、框架特定构建命令）
+
+**v2 —— 生态与规模**
+
+- [ ] Rust（`Cargo.toml`）、Java（Maven/Gradle）、Ruby、PHP、.NET
+- [ ] monorepo workspace 检测与路径过滤（只跑受影响的包，矩阵 job）
+- [ ] 测试产出覆盖率报告时的阈值检查
+- [ ] 更聪明的缓存（锁文件 keyed 依赖缓存、构建产物缓存）
+
+**v3 —— 平台化**
+
+- [ ] GitHub App：自动注入 workflow、PR 状态报告、配置漂移后 re-generate PR
+- [ ] 规则库数据驱动化（YAML 模板），社区可贡献新生态
+- [ ] 自托管 runner 与容器镜像执行环境支持
