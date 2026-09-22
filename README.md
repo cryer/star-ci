@@ -188,26 +188,3 @@ action.yml          GitHub Action (composite)
 Dockerfile          Container image
 ```
 
-## Roadmap
-
-**v1.x — hardening (current focus)**
-
-- [x] `run --dry-run`: print the inferred plan without executing
-- [x] `.star-ci.yml` minimal override config (disable/append steps, tune confidence threshold)
-- [x] Reporter: GitHub Job Summary with failure digests and the detection rationale
-- [ ] Reporter: PR comments with failure digests
-- [x] Richer Node signals (turbo/nx monorepo roots, framework-specific build commands)
-
-**v2 — ecosystems & scale**
-
-- [x] Rust (`Cargo.toml`)
-- [x] Java (Maven/Gradle), Ruby, PHP, .NET, C/C++ (CMake/Make)
-- [x] Monorepo workspace detection + path filtering (only run CI for affected packages, matrix jobs)
-- [x] Coverage thresholds when tests emit coverage reports
-- [x] Smarter caching (lockfile-keyed dependency caches, build artifact caches)
-
-**v3 — platform**
-
-- [ ] GitHub App: auto-inject workflows, PR status reports, re-generate PRs on config drift
-- [ ] Data-driven rule packs (YAML templates) so the community can contribute ecosystems
-- [ ] Self-hosted runner & container-image-based execution profiles
