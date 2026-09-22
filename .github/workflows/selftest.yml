@@ -8,22 +8,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Debug environment
-        run: |
-          go version || true
-          go env GOTOOLCHAIN || true
       - uses: actions/setup-go@v5
         with:
           go-version: stable
       - name: Build star-ci
         run: |
-          set +e
-          out=$(go build -o "$RUNNER_TEMP/star-ci" ./cmd/star-ci 2>&1)
-          code=$?
-          if [ $code -ne 0 ]; then
-            echo "::error::go build failed (exit $code): ${out//$'\n'/%0A}"
-            exit $code
-          fi
+          go build -o "$RUNNER_TEMP/star-ci" ./cmd/star-ci
       - name: Run star-ci
         run: |
           "$RUNNER_TEMP/star-ci" run .

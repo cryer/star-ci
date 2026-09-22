@@ -1,6 +1,6 @@
-# binaries
-star-ci
-star-ci.exe
+# binaries (anchored to repo root so cmd/star-ci/ is NOT ignored)
+/star-ci
+/star-ci.exe
 *.exe
 /dist/
 
