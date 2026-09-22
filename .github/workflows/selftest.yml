@@ -1,0 +1,23 @@
+name: selftest
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Debug environment
+        run: |
+          go version || true
+          go env GOTOOLCHAIN || true
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: Build star-ci
+        run: |
+          go build -o "$RUNNER_TEMP/star-ci" ./cmd/star-ci
+      - name: Run star-ci
+        run: |
+          "$RUNNER_TEMP/star-ci" run .

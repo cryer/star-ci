@@ -1,19 +1,11 @@
 name: star-ci
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
 jobs:
   ci:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Debug environment
-        run: |
-          go version || true
-          go env GOTOOLCHAIN || true
-          echo "RUNNER_TEMP=$RUNNER_TEMP"
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.23'
-      - name: Build star-ci
-        run: go build -o "$RUNNER_TEMP/star-ci" ./cmd/star-ci
-      - name: Run star-ci
-        run: "$RUNNER_TEMP/star-ci" run .
+      - uses: cryer/star-ci@v1
