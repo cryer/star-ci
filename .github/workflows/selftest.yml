@@ -17,7 +17,13 @@ jobs:
           go-version: stable
       - name: Build star-ci
         run: |
-          go build -o "$RUNNER_TEMP/star-ci" ./cmd/star-ci
+          set +e
+          out=$(go build -o "$RUNNER_TEMP/star-ci" ./cmd/star-ci 2>&1)
+          code=$?
+          if [ $code -ne 0 ]; then
+            echo "::error::go build failed (exit $code): ${out//$'\n'/%0A}"
+            exit $code
+          fi
       - name: Run star-ci
         run: |
           "$RUNNER_TEMP/star-ci" run .
