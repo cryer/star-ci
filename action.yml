@@ -32,4 +32,5 @@ runs:
         go build -o "${RUNNER_TEMP}/star-ci" ./cmd/star-ci
     - name: Run star-ci
       shell: bash
-      run: "${RUNNER_TEMP}/star-ci" run "${{ inputs.path }}"
+      run: |
+        "${RUNNER_TEMP}/star-ci" run "${{ inputs.path }}"
