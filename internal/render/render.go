@@ -53,6 +53,14 @@ func WorkflowYAML(pl plan.Plan) ([]byte, error) {
 			b.WriteString(with)
 		}
 	}
+	if prof.HasLanguage("rust") {
+		b.WriteString("      - name: Set up Rust\n")
+		b.WriteString("        uses: dtolnay/rust-toolchain@stable\n")
+		if with := setupWith(map[string]string{"toolchain": prof.LanguageVersion("rust")}); with != "" {
+			b.WriteString("        with:\n")
+			b.WriteString(with)
+		}
+	}
 
 	for _, s := range pl.Steps {
 		fmt.Fprintf(&b, "      - name: %s\n", s.Name)
@@ -71,7 +79,7 @@ func WorkflowYAML(pl plan.Plan) ([]byte, error) {
 // values. Keys are fixed per call site, so a stable order is chosen here.
 func setupWith(kv map[string]string) string {
 	var order []string
-	for _, k := range []string{"node-version", "cache", "python-version", "go-version"} {
+	for _, k := range []string{"node-version", "cache", "python-version", "go-version", "toolchain"} {
 		if _, ok := kv[k]; ok {
 			order = append(order, k)
 		}
@@ -80,7 +88,7 @@ func setupWith(kv map[string]string) string {
 	for _, k := range order {
 		if v := kv[k]; v != "" {
 			// quote versions so YAML doesn't coerce e.g. "3.10" to 3.1
-			if strings.HasSuffix(k, "-version") {
+			if strings.HasSuffix(k, "-version") || k == "toolchain" {
 				fmt.Fprintf(&b, "          %s: '%s'\n", k, v)
 			} else {
 				fmt.Fprintf(&b, "          %s: %s\n", k, v)

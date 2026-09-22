@@ -151,6 +151,47 @@ func TestBuildPlanNode(t *testing.T) {
 			},
 			want: map[string][]string{"node-format": {"npx prettier --check ."}},
 		},
+		{
+			name: "turbo monorepo runs build/test via turbo",
+			prof: profile.Profile{
+				Languages:  []profile.Language{{Name: "node", Confidence: 0.95}},
+				TestRunner: "vitest",
+				Scripts:    map[string]string{"build": "turbo run build", "test": "turbo run test"},
+				Signals: []profile.Signal{
+					{Source: "turbo.json", Key: "monorepo", Value: "turbo", Confidence: 0.95},
+				},
+			},
+			want: map[string][]string{
+				"node-test":  {"turbo run test"},
+				"node-build": {"turbo run build"},
+			},
+		},
+		{
+			name: "nx monorepo runs build/test via nx",
+			prof: profile.Profile{
+				Languages:  []profile.Language{{Name: "node", Confidence: 0.95}},
+				TestRunner: "jest",
+				Scripts:    map[string]string{"build": "vite build", "test": "jest"},
+				Signals: []profile.Signal{
+					{Source: "nx.json", Key: "monorepo", Value: "nx", Confidence: 0.95},
+				},
+			},
+			want: map[string][]string{
+				"node-test":  {"nx run-many -t test"},
+				"node-build": {"nx run-many -t build"},
+			},
+		},
+		{
+			name: "low-confidence monorepo signal is ignored",
+			prof: profile.Profile{
+				Languages: []profile.Language{{Name: "node", Confidence: 0.9}},
+				Scripts:   map[string]string{"build": "vite build"},
+				Signals: []profile.Signal{
+					{Source: "turbo.json", Key: "monorepo", Value: "turbo", Confidence: 0.4},
+				},
+			},
+			want: map[string][]string{"node-build": {"npm run build"}},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -189,6 +230,23 @@ func TestBuildPlanNodeReason(t *testing.T) {
 	pl := BuildPlan(p)
 	s := findStep(t, pl, "node-install")
 	want := "package.json + pnpm-lock.yaml detected"
+	if s.Reason != want {
+		t.Errorf("reason = %q, want %q", s.Reason, want)
+	}
+}
+
+func TestBuildPlanNodeFrameworkReason(t *testing.T) {
+	p := profile.Profile{
+		Languages: []profile.Language{{Name: "node", Confidence: 0.95}},
+		Scripts:   map[string]string{"build": "next build"},
+		Signals: []profile.Signal{
+			{Source: "package.json", Key: "framework", Value: "next", Confidence: 0.9},
+			{Source: "package.json", Key: "framework", Value: "vite", Confidence: 0.4}, // below threshold
+		},
+	}
+	pl := BuildPlan(p)
+	s := findStep(t, pl, "node-build")
+	want := "package.json detected; build script detected; framework next"
 	if s.Reason != want {
 		t.Errorf("reason = %q, want %q", s.Reason, want)
 	}
@@ -324,6 +382,48 @@ func TestBuildPlanGoMinimal(t *testing.T) {
 	assertStep(t, pl, "go-build", []string{"go build ./..."}, plan.CatBuild, false)
 	assertNoStep(t, pl, "go-lint")
 	assertNoStep(t, pl, "go-typecheck")
+}
+
+func TestBuildPlanRust(t *testing.T) {
+	p := profile.Profile{
+		Languages:      []profile.Language{{Name: "rust", VersionHint: "1.75.0", Confidence: 0.98}},
+		PackageManager: "cargo",
+		TestRunner:     "cargo",
+		Linters:        []string{"clippy"},
+		Formatters:     []string{"rustfmt"},
+		Lockfiles:      []string{"Cargo.lock"},
+		Signals: []profile.Signal{
+			{Source: "Cargo.toml", Key: "language", Value: "rust", Confidence: 0.98},
+		},
+	}
+	pl := BuildPlan(p)
+	assertStep(t, pl, "rust-install", []string{"cargo fetch"}, plan.CatInstall, false)
+	assertStep(t, pl, "rust-lint", []string{"cargo clippy --all-targets -- -D warnings"}, plan.CatLint, false)
+	assertStep(t, pl, "rust-format", []string{"cargo fmt --check"}, plan.CatLint, false)
+	assertStep(t, pl, "rust-test", []string{"cargo test"}, plan.CatTest, false)
+	assertStep(t, pl, "rust-build", []string{"cargo build --locked"}, plan.CatBuild, false)
+	assertStep(t, pl, "security-audit-rust",
+		[]string{"cargo install cargo-audit --locked && cargo audit"}, plan.CatSecurity, true)
+	assertStep(t, pl, "security-secrets", []string{"gitleaks detect --source ."}, plan.CatSecurity, true)
+	s := findStep(t, pl, "rust-install")
+	if want := "Cargo.toml + Cargo.lock detected"; s.Reason != want {
+		t.Errorf("rust-install reason = %q, want %q", s.Reason, want)
+	}
+}
+
+func TestBuildPlanRustMinimal(t *testing.T) {
+	p := profile.Profile{
+		Languages: []profile.Language{{Name: "rust", Confidence: 0.98}},
+		Signals: []profile.Signal{
+			{Source: "Cargo.toml", Key: "language", Value: "rust", Confidence: 0.98},
+		},
+	}
+	pl := BuildPlan(p)
+	assertStep(t, pl, "rust-install", []string{"cargo fetch"}, plan.CatInstall, false)
+	assertStep(t, pl, "rust-test", []string{"cargo test"}, plan.CatTest, false)
+	assertStep(t, pl, "rust-build", []string{"cargo build"}, plan.CatBuild, false)
+	assertNoStep(t, pl, "rust-lint")
+	assertNoStep(t, pl, "rust-format")
 }
 
 func TestBuildPlanDocker(t *testing.T) {

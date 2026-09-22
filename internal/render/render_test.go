@@ -70,6 +70,40 @@ func TestWorkflowYAML(t *testing.T) {
 	}
 }
 
+func TestWorkflowYAMLRust(t *testing.T) {
+	var prof profile.Profile
+	prof.AddLanguage("rust", "1.75.0", 0.98)
+
+	data, err := WorkflowYAML(plan.Plan{Profile: prof})
+	if err != nil {
+		t.Fatalf("WorkflowYAML: %v", err)
+	}
+	y := string(data)
+	for _, want := range []string{
+		"      - name: Set up Rust\n",
+		"uses: dtolnay/rust-toolchain@stable",
+		"          toolchain: '1.75.0'",
+	} {
+		if !strings.Contains(y, want) {
+			t.Errorf("workflow missing %q\ngot:\n%s", want, y)
+		}
+	}
+
+	var noHint profile.Profile
+	noHint.AddLanguage("rust", "", 0.98)
+	data, err = WorkflowYAML(plan.Plan{Profile: noHint})
+	if err != nil {
+		t.Fatalf("WorkflowYAML: %v", err)
+	}
+	y = string(data)
+	if !strings.Contains(y, "uses: dtolnay/rust-toolchain@stable") {
+		t.Errorf("rust setup missing:\n%s", y)
+	}
+	if strings.Contains(y, "toolchain:") {
+		t.Errorf("empty version hint should omit toolchain:\n%s", y)
+	}
+}
+
 func TestWorkflowYAMLMinimalProfile(t *testing.T) {
 	pl := plan.Plan{
 		Steps: []plan.Step{

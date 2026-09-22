@@ -152,6 +152,73 @@ func TestGoVendorTestsIgnored(t *testing.T) {
 	}
 }
 
+func TestNodeTurboMonorepo(t *testing.T) {
+	prof, err := analyzer.Analyze(fixture(t, "node-turbo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !prof.HasLanguage("node") {
+		t.Fatalf("node not detected: %+v", prof.Languages)
+	}
+	if !hasSignal(prof, "monorepo", "turbo") {
+		t.Error("missing monorepo=turbo signal")
+	}
+	if !hasSignal(prof, "framework", "vite") {
+		t.Error("missing framework=vite signal")
+	}
+	if hasSignal(prof, "monorepo", "nx") {
+		t.Error("unexpected monorepo=nx signal")
+	}
+}
+
+func TestRustCargo(t *testing.T) {
+	prof, err := analyzer.Analyze(fixture(t, "rust-cargo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !prof.HasLanguage("rust") {
+		t.Fatalf("rust not detected: %+v", prof.Languages)
+	}
+	// rust-toolchain.toml channel wins over Cargo.toml rust-version
+	if got := prof.LanguageVersion("rust"); got != "1.75.0" {
+		t.Errorf("version hint = %q, want 1.75.0", got)
+	}
+	if prof.PackageManager != "cargo" {
+		t.Errorf("PackageManager = %q, want cargo", prof.PackageManager)
+	}
+	if !hasString(prof.Lockfiles, "Cargo.lock") {
+		t.Errorf("Lockfiles = %v, want Cargo.lock", prof.Lockfiles)
+	}
+	if prof.TestRunner != "cargo" {
+		t.Errorf("TestRunner = %q, want cargo", prof.TestRunner)
+	}
+	if !hasString(prof.Formatters, "rustfmt") {
+		t.Errorf("Formatters = %v, want rustfmt", prof.Formatters)
+	}
+	if hasString(prof.Linters, "clippy") {
+		t.Errorf("Linters = %v, want no clippy without clippy.toml", prof.Linters)
+	}
+}
+
+func TestRustToolchainPlain(t *testing.T) {
+	prof, err := analyzer.Analyze(fixture(t, "rust-toolchain-plain"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !prof.HasLanguage("rust") {
+		t.Fatalf("rust not detected: %+v", prof.Languages)
+	}
+	if got := prof.LanguageVersion("rust"); got != "stable" {
+		t.Errorf("version hint = %q, want stable", got)
+	}
+	if hasString(prof.Lockfiles, "Cargo.lock") {
+		t.Errorf("Lockfiles = %v, want no Cargo.lock", prof.Lockfiles)
+	}
+	if len(prof.Formatters) != 0 {
+		t.Errorf("Formatters = %v, want none without rustfmt.toml", prof.Formatters)
+	}
+}
+
 func TestEmptyDir(t *testing.T) {
 	prof, err := analyzer.Analyze(t.TempDir())
 	if err != nil {

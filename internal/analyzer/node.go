@@ -51,6 +51,13 @@ func detectNode(root string, prof *profile.Profile) {
 
 	detectNodePM(root, &pkg, prof)
 
+	if fileExists(root, "turbo.json") {
+		prof.AddSignal("turbo.json", "monorepo", "turbo", 0.95)
+	}
+	if fileExists(root, "nx.json") {
+		prof.AddSignal("nx.json", "monorepo", "nx", 0.95)
+	}
+
 	if len(pkg.Scripts) > 0 {
 		if prof.Scripts == nil {
 			prof.Scripts = map[string]string{}
@@ -121,8 +128,15 @@ func detectNode(root string, prof *profile.Profile) {
 		prof.AddSignal("tsconfig.json", "typecheck", "tsc", 0.9)
 	}
 
-	if pkg.hasDep("next") {
-		prof.AddSignal("package.json", "framework", "next", 0.9)
+	for _, fw := range []struct{ pkg, name string }{
+		{"next", "next"},
+		{"nuxt", "nuxt"},
+		{"@remix-run/react", "remix"},
+		{"vite", "vite"},
+	} {
+		if pkg.hasDep(fw.pkg) {
+			prof.AddSignal("package.json", "framework", fw.name, 0.9)
+		}
 	}
 }
 

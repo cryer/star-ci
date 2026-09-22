@@ -26,6 +26,7 @@ func Analyze(root string) (profile.Profile, error) {
 	detectNode(root, &prof)
 	detectPython(root, &prof)
 	detectGo(root, &prof)
+	detectRust(root, &prof)
 	detectCommon(root, &prof)
 	prof.SortLanguages()
 	return prof, nil

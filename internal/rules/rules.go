@@ -23,6 +23,8 @@ func BuildPlan(p profile.Profile) plan.Plan {
 			steps = append(steps, pythonSteps(p)...)
 		case "go":
 			steps = append(steps, goSteps(p)...)
+		case "rust":
+			steps = append(steps, rustSteps(p)...)
 		}
 	}
 	steps = append(steps, securitySteps(p)...)
@@ -115,22 +117,40 @@ func nodeSteps(p profile.Profile) []plan.Step {
 	}
 
 	if p.TestRunner != "" || hasScript(p, "test") {
+		cmd, name := pm+" test", "Run tests ("+pm+")"
+		switch monorepoTool(p) {
+		case "turbo":
+			cmd, name = "turbo run test", "Run tests (turbo)"
+		case "nx":
+			cmd, name = "nx run-many -t test", "Run tests (nx)"
+		}
 		steps = append(steps, plan.Step{
 			ID:       "node-test",
-			Name:     "Run tests (" + pm + ")",
+			Name:     name,
 			Category: plan.CatTest,
-			Commands: []string{pm + " test"},
-			Reason:   reason + "; test script detected",
+			Commands: []string{cmd},
+			Reason:   reason + "; test script detected" + monorepoReason(p),
 		})
 	}
 
 	if hasScript(p, "build") {
+		cmd, name := pm+" run build", "Build ("+pm+")"
+		switch monorepoTool(p) {
+		case "turbo":
+			cmd, name = "turbo run build", "Build (turbo)"
+		case "nx":
+			cmd, name = "nx run-many -t build", "Build (nx)"
+		}
+		buildReason := reason + "; build script detected" + monorepoReason(p)
+		if fws := nodeFrameworks(p); fws != "" {
+			buildReason += "; framework " + fws
+		}
 		steps = append(steps, plan.Step{
 			ID:       "node-build",
-			Name:     "Build (" + pm + ")",
+			Name:     name,
 			Category: plan.CatBuild,
-			Commands: []string{pm + " run build"},
-			Reason:   reason + "; build script detected",
+			Commands: []string{cmd},
+			Reason:   buildReason,
 		})
 	}
 	return steps
@@ -253,6 +273,58 @@ func goSteps(p profile.Profile) []plan.Step {
 	return steps
 }
 
+func rustSteps(p profile.Profile) []plan.Step {
+	reason := rustReason(p)
+	steps := []plan.Step{
+		{
+			ID:       "rust-install",
+			Name:     "Fetch dependencies (cargo)",
+			Category: plan.CatInstall,
+			Commands: []string{"cargo fetch"},
+			Reason:   reason,
+		},
+	}
+	if contains(p.Linters, "clippy") {
+		steps = append(steps, plan.Step{
+			ID:       "rust-lint",
+			Name:     "Lint (clippy)",
+			Category: plan.CatLint,
+			Commands: []string{"cargo clippy --all-targets -- -D warnings"},
+			Reason:   reason + "; clippy configured",
+		})
+	}
+	if contains(p.Formatters, "rustfmt") {
+		steps = append(steps, plan.Step{
+			ID:       "rust-format",
+			Name:     "Check formatting (rustfmt)",
+			Category: plan.CatLint,
+			Commands: []string{"cargo fmt --check"},
+			Reason:   reason + "; rustfmt configured",
+		})
+	}
+	buildCmd := "cargo build"
+	if hasLockfile(p, "Cargo.lock") {
+		buildCmd = "cargo build --locked"
+	}
+	steps = append(steps,
+		plan.Step{
+			ID:       "rust-test",
+			Name:     "Run tests (cargo test)",
+			Category: plan.CatTest,
+			Commands: []string{"cargo test"},
+			Reason:   reason,
+		},
+		plan.Step{
+			ID:       "rust-build",
+			Name:     "Build (cargo build)",
+			Category: plan.CatBuild,
+			Commands: []string{buildCmd},
+			Reason:   reason,
+		},
+	)
+	return steps
+}
+
 // securitySteps adds always-optional audit and secret-scan steps per ecosystem.
 func securitySteps(p profile.Profile) []plan.Step {
 	var steps []plan.Step
@@ -270,6 +342,9 @@ func securitySteps(p profile.Profile) []plan.Step {
 		case "go":
 			steps = append(steps, securityStep("security-audit-go",
 				"Audit dependencies (govulncheck)", "go run golang.org/x/vuln/cmd/govulncheck@latest ./...", goReason(p)))
+		case "rust":
+			steps = append(steps, securityStep("security-audit-rust",
+				"Audit dependencies (cargo-audit)", "cargo install cargo-audit --locked && cargo audit", rustReason(p)))
 		}
 	}
 	if len(steps) > 0 {
@@ -330,6 +405,46 @@ func goReason(p profile.Profile) string {
 		return "go.mod detected"
 	}
 	return "go module detected"
+}
+
+func rustReason(p profile.Profile) string {
+	if hasSource(p, "Cargo.toml") {
+		parts := []string{"Cargo.toml"}
+		if hasLockfile(p, "Cargo.lock") {
+			parts = append(parts, "Cargo.lock")
+		}
+		return joinDetected(parts)
+	}
+	return "rust project detected"
+}
+
+// monorepoTool returns the detected monorepo orchestrator ("turbo" or
+// "nx"), "" if none was detected at or above MinConfidence.
+func monorepoTool(p profile.Profile) string {
+	for _, s := range p.Signals {
+		if s.Key == "monorepo" && s.Confidence >= profile.MinConfidence {
+			return s.Value
+		}
+	}
+	return ""
+}
+
+func monorepoReason(p profile.Profile) string {
+	if tool := monorepoTool(p); tool != "" {
+		return "; " + tool + " monorepo"
+	}
+	return ""
+}
+
+// nodeFrameworks lists detected node frameworks in signal order, "" if none.
+func nodeFrameworks(p profile.Profile) string {
+	var fws []string
+	for _, s := range p.Signals {
+		if s.Key == "framework" && s.Confidence >= profile.MinConfidence {
+			fws = append(fws, s.Value)
+		}
+	}
+	return strings.Join(fws, ", ")
 }
 
 func joinDetected(parts []string) string {
