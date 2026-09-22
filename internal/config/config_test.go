@@ -169,6 +169,55 @@ func TestLoadErrors(t *testing.T) {
 	}
 }
 
+func TestLoadCoverage(t *testing.T) {
+	cfg, err := load(t, "coverage: 80\nconfidence: 0.7\n")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if cfg.Coverage == nil || *cfg.Coverage != 80 {
+		t.Errorf("coverage = %v, want 80", cfg.Coverage)
+	}
+	if cfg.Confidence == nil || *cfg.Confidence != 0.7 {
+		t.Errorf("confidence = %v, want 0.7", cfg.Confidence)
+	}
+
+	cfg, err = load(t, "coverage: 0\ndisable:\n  - go-lint\n")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if cfg.Coverage == nil || *cfg.Coverage != 0 {
+		t.Errorf("coverage = %v, want 0 (boundary)", cfg.Coverage)
+	}
+	if len(cfg.Disable) != 1 {
+		t.Errorf("coverage key must not swallow the following section: %+v", cfg)
+	}
+}
+
+func TestLoadCoverageErrors(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{"coverage not a number", "coverage: high\n", ":1: invalid coverage"},
+		{"coverage above 100", "coverage: 101\n", ":1: coverage 101.00 out of range [0, 100]"},
+		{"coverage below 0", "coverage: -1\n", ":1: coverage -1.00 out of range [0, 100]"},
+		{"coverage missing value", "coverage:\n", ":1: coverage expects a numeric value"},
+		{"coverage wrong line reported", "disable:\n  - x\ncoverage: 150\n", ":3: coverage 150.00 out of range"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := load(t, tc.content)
+			if err == nil {
+				t.Fatalf("expected error containing %q, got nil", tc.want)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error %q does not contain %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestApply(t *testing.T) {
 	cfg := &Config{
 		Disable: []string{"go-lint"},

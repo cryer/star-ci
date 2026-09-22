@@ -7,7 +7,8 @@
 //	star-ci generate [path] [-o file]  detect + render a GitHub Actions workflow
 //
 // All commands honor an optional .star-ci.yml at the repo root:
-// `confidence` overrides the detection threshold, `disable` drops steps by
+// `confidence` overrides the detection threshold, `coverage` declares a
+// required line-coverage percentage for run, `disable` drops steps by
 // ID, and `append` adds custom steps. See internal/config.
 package main
 
@@ -63,8 +64,9 @@ usage:
                                      (default -o .github/workflows/star-ci.yml)
 
 config: an optional .star-ci.yml at the repo root may set 'confidence'
-(threshold override), 'disable' (step IDs to drop) and 'append'
-(custom steps). It applies to all three commands.
+(threshold override), 'coverage' (required line-coverage percentage for
+run), 'disable' (step IDs to drop) and 'append' (custom steps). It
+applies to all three commands.
 `)
 }
 
@@ -112,13 +114,16 @@ func configSummary(cfg *config.Config) string {
 	if cfg.Confidence != nil {
 		parts = append(parts, fmt.Sprintf("confidence %.2f", *cfg.Confidence))
 	}
+	if cfg.Coverage != nil {
+		parts = append(parts, fmt.Sprintf("coverage %.1f%%", *cfg.Coverage))
+	}
 	if len(parts) == 0 {
 		return filepath.Base(cfg.Path)
 	}
 	return fmt.Sprintf("%s (%s)", filepath.Base(cfg.Path), strings.Join(parts, ", "))
 }
 
-func buildPlan(root string) plan.Plan {
+func buildPlan(root string) (plan.Plan, *config.Config) {
 	cfg := loadConfig(root)
 	prof, err := analyzer.Analyze(root)
 	if err != nil {
@@ -126,7 +131,7 @@ func buildPlan(root string) plan.Plan {
 	}
 	pl := rules.BuildPlan(prof)
 	cfg.Apply(&pl)
-	return pl
+	return pl, cfg
 }
 
 func cmdAnalyze(args []string) int {
@@ -197,12 +202,13 @@ func cmdRun(args []string) int {
 	_ = fs.Parse(args)
 	root := resolveRoot(fs.Args())
 
-	pl := buildPlan(root)
+	pl, cfg := buildPlan(root)
 	if *dryRun {
 		runner.Explain(pl, os.Stdout)
 		return 0
 	}
-	if err := runner.Run(context.Background(), root, pl, os.Stdout); err != nil {
+	opts := runner.Options{CoverageThreshold: cfg.Coverage}
+	if err := runner.Run(context.Background(), root, pl, os.Stdout, opts); err != nil {
 		fmt.Fprintf(os.Stderr, "star-ci: %v\n", err)
 		return 1
 	}
@@ -216,7 +222,7 @@ func cmdGenerate(args []string) int {
 	_ = fs.Parse(args)
 	root := resolveRoot(fs.Args())
 
-	pl := buildPlan(root)
+	pl, _ := buildPlan(root)
 	if len(pl.Steps) == 0 {
 		fatal("nothing detected: no CI steps to generate")
 	}

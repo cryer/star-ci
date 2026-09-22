@@ -3,6 +3,7 @@
 // Supported YAML subset (parsed by line scanning, no YAML library):
 //
 //	confidence: 0.7          # override profile.MinConfidence
+//	coverage: 80             # required line-coverage percentage (0-100) for run
 //	disable:                 # step IDs to remove from the plan
 //	  - go-lint
 //	append:                  # custom steps to append
@@ -37,6 +38,7 @@ const FileName = ".star-ci.yml"
 // Config is the parsed .star-ci.yml. The zero value means "no config".
 type Config struct {
 	Confidence *float64    // nil = keep profile.MinConfidence default
+	Coverage   *float64    // nil = no coverage threshold; else 0-100 percent
 	Disable    []string    // step IDs to drop from the plan
 	Append     []plan.Step // custom steps appended to the plan
 	Path       string      // file the config was loaded from, "" if none
@@ -138,6 +140,19 @@ func (p *parser) line(raw string, no int) error {
 			}
 			p.cfg.Confidence = &f
 			p.section = ""
+		case "coverage":
+			if !found || val == "" {
+				return p.err(no, "coverage expects a numeric value")
+			}
+			f, err := strconv.ParseFloat(unquote(val), 64)
+			if err != nil {
+				return p.err(no, "invalid coverage %q: not a number", val)
+			}
+			if f < 0 || f > 100 {
+				return p.err(no, "coverage %.2f out of range [0, 100]", f)
+			}
+			p.cfg.Coverage = &f
+			p.section = ""
 		case "disable":
 			if val != "" {
 				return p.err(no, "disable expects a list on the following lines")
@@ -149,7 +164,7 @@ func (p *parser) line(raw string, no int) error {
 			}
 			p.section = "append"
 		default:
-			return p.err(no, "unknown top-level key %q (want confidence|disable|append)", key)
+			return p.err(no, "unknown top-level key %q (want confidence|coverage|disable|append)", key)
 		}
 		return nil
 	}

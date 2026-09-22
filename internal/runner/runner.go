@@ -13,9 +13,18 @@ import (
 	"github.com/cryer/star-ci/internal/plan"
 )
 
+// Options carries optional run-time settings beyond the plan itself.
+type Options struct {
+	// CoverageThreshold, when non-nil, is a required line-coverage
+	// percentage (0-100) enforced after all steps pass. It applies only
+	// when a known coverage report exists in the repo (see coverage.go).
+	CoverageThreshold *float64
+}
+
 // Run prints and executes each step of the plan from root. A failed required
-// step aborts the run with an error; a failed optional step only warns.
-func Run(ctx context.Context, root string, pl plan.Plan, w io.Writer) error {
+// step aborts the run with an error; a failed optional step only warns. After
+// all steps pass, an unmet coverage threshold fails the run.
+func Run(ctx context.Context, root string, pl plan.Plan, w io.Writer, opts Options) error {
 	printHeader(pl, w)
 	passed, warnings := 0, 0
 	results := make([]StepResult, 0, len(pl.Steps))
@@ -40,7 +49,7 @@ func Run(ctx context.Context, root string, pl plan.Plan, w io.Writer) error {
 					if d := Digest(capture.String(), DigestLines); d != "" {
 						err = fmt.Errorf("%w\n\nfailure digest:\n%s", err, d)
 					}
-					writeStepSummary(pl, results, w)
+					writeStepSummary(pl, results, nil, w)
 					return err
 				}
 				break
@@ -51,8 +60,17 @@ func Run(ctx context.Context, root string, pl plan.Plan, w io.Writer) error {
 			results = append(results, StepResult{Step: s, Status: StatusPassed, Output: capture.String()})
 		}
 	}
+	var cov *CoverageResult
+	if opts.CoverageThreshold != nil {
+		var err error
+		cov, err = checkCoverage(root, *opts.CoverageThreshold, w)
+		if err != nil {
+			writeStepSummary(pl, results, cov, w)
+			return err
+		}
+	}
 	fmt.Fprintf(w, "star-ci: %d steps passed, %d optional warnings\n", passed, warnings)
-	writeStepSummary(pl, results, w)
+	writeStepSummary(pl, results, cov, w)
 	return nil
 }
 

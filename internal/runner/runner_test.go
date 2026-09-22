@@ -34,7 +34,7 @@ func TestRunSuccess(t *testing.T) {
 		plan.Step{ID: "two", Name: "Second", Category: plan.CatTest, Commands: []string{"echo world", "echo again"}, Reason: "test"},
 	)
 	var buf bytes.Buffer
-	if err := Run(context.Background(), t.TempDir(), pl, &buf); err != nil {
+	if err := Run(context.Background(), t.TempDir(), pl, &buf, Options{}); err != nil {
 		t.Fatalf("Run returned error: %v\noutput:\n%s", err, buf.String())
 	}
 	out := buf.String()
@@ -62,7 +62,7 @@ func TestRunFailFast(t *testing.T) {
 		plan.Step{ID: "never", Name: "Never", Category: plan.CatTest, Commands: []string{"echo unreached"}, Reason: "test"},
 	)
 	var buf bytes.Buffer
-	err := Run(context.Background(), t.TempDir(), pl, &buf)
+	err := Run(context.Background(), t.TempDir(), pl, &buf, Options{})
 	if err == nil {
 		t.Fatal("expected error from failing required step")
 	}
@@ -86,7 +86,7 @@ func TestRunOptionalWarns(t *testing.T) {
 		plan.Step{ID: "after", Name: "After", Category: plan.CatBuild, Commands: []string{"echo done"}, Reason: "test"},
 	)
 	var buf bytes.Buffer
-	if err := Run(context.Background(), t.TempDir(), pl, &buf); err != nil {
+	if err := Run(context.Background(), t.TempDir(), pl, &buf, Options{}); err != nil {
 		t.Fatalf("optional failure should not error, got: %v", err)
 	}
 	out := buf.String()
@@ -104,7 +104,7 @@ func TestRunOptionalWarns(t *testing.T) {
 
 func TestRunEmptyPlan(t *testing.T) {
 	var buf bytes.Buffer
-	if err := Run(context.Background(), t.TempDir(), plan.Plan{}, &buf); err != nil {
+	if err := Run(context.Background(), t.TempDir(), plan.Plan{}, &buf, Options{}); err != nil {
 		t.Fatalf("empty plan should succeed, got: %v", err)
 	}
 	if !strings.Contains(buf.String(), "0 steps passed, 0 optional warnings") {

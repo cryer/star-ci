@@ -45,8 +45,9 @@ func Digest(output string, n int) string {
 	return fmt.Sprintf("... (%d earlier lines omitted)\n%s", omitted, tail)
 }
 
-// RenderSummary builds the Markdown job summary for a finished run.
-func RenderSummary(pl plan.Plan, results []StepResult) string {
+// RenderSummary builds the Markdown job summary for a finished run. cov is
+// the coverage check outcome, nil when no threshold was enforced.
+func RenderSummary(pl plan.Plan, results []StepResult, cov *CoverageResult) string {
 	var b strings.Builder
 	b.WriteString("## star-ci summary\n\n")
 	renderProfile(&b, pl.Profile)
@@ -57,6 +58,15 @@ func RenderSummary(pl plan.Plan, results []StepResult) string {
 		fmt.Fprintf(&b, "| %s | %s | %s | %s |\n",
 			escapeCell(r.Step.Name), escapeCell(string(r.Step.Category)),
 			r.Status, escapeCell(r.Step.Reason))
+	}
+	if cov != nil {
+		b.WriteString("\n### Coverage\n\n")
+		status := "passed"
+		if !cov.Met() {
+			status = "below threshold"
+		}
+		fmt.Fprintf(&b, "- **%.1f%%** from `%s` (threshold %.1f%% — %s)\n",
+			cov.Percent, escapeCell(cov.Source), cov.Threshold, status)
 	}
 	var digests []StepResult
 	for _, r := range results {
@@ -118,7 +128,7 @@ func escapeCell(s string) string {
 // writeStepSummary appends the Markdown summary to the file named by the
 // GITHUB_STEP_SUMMARY environment variable. Outside GitHub Actions (variable
 // unset) it is a no-op. Write failures are reported but never fail the run.
-func writeStepSummary(pl plan.Plan, results []StepResult, w io.Writer) {
+func writeStepSummary(pl plan.Plan, results []StepResult, cov *CoverageResult, w io.Writer) {
 	path := os.Getenv("GITHUB_STEP_SUMMARY")
 	if path == "" {
 		return
@@ -129,7 +139,7 @@ func writeStepSummary(pl plan.Plan, results []StepResult, w io.Writer) {
 		return
 	}
 	defer f.Close()
-	if _, err := f.WriteString(RenderSummary(pl, results)); err != nil {
+	if _, err := f.WriteString(RenderSummary(pl, results, cov)); err != nil {
 		fmt.Fprintf(w, "star-ci: warning: could not write step summary: %v\n", err)
 	}
 }

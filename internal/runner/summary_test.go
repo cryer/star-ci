@@ -63,7 +63,7 @@ func TestRenderSummary(t *testing.T) {
 		{Step: pl.Steps[0], Status: StatusFailed, Output: "ok pkg/a\nFAIL pkg/b\n"},
 		{Step: pl.Steps[1], Status: StatusSkipped},
 	}
-	md := RenderSummary(pl, results)
+	md := RenderSummary(pl, results, nil)
 	for _, want := range []string{
 		"## star-ci summary",
 		"**Detected:** go 1.22",
@@ -92,7 +92,7 @@ func TestRenderSummaryWarnedDigest(t *testing.T) {
 		{Step: pl.Steps[0], Status: StatusPassed, Output: "all good\n"},
 		{Step: pl.Steps[1], Status: StatusWarned, Output: "vuln found\n"},
 	}
-	md := RenderSummary(pl, results)
+	md := RenderSummary(pl, results, nil)
 	if !strings.Contains(md, "<summary>Security scan (go-sec) — warned</summary>") {
 		t.Errorf("warned step with output should get a digest\nsummary:\n%s", md)
 	}
@@ -103,7 +103,7 @@ func TestRenderSummaryWarnedDigest(t *testing.T) {
 
 func TestRenderSummaryEscapesTableCells(t *testing.T) {
 	pl := plan.Plan{Steps: []plan.Step{{ID: "x", Name: "A|B", Category: plan.CatTest, Reason: "a|b\nc"}}}
-	md := RenderSummary(pl, []StepResult{{Step: pl.Steps[0], Status: StatusPassed}})
+	md := RenderSummary(pl, []StepResult{{Step: pl.Steps[0], Status: StatusPassed}}, nil)
 	if !strings.Contains(md, "| A\\|B | test | passed | a\\|b c |") {
 		t.Errorf("pipes and newlines should be escaped in table cells\nsummary:\n%s", md)
 	}
@@ -119,7 +119,7 @@ func TestRunWritesStepSummary(t *testing.T) {
 		plan.Step{ID: "never", Name: "Never", Category: plan.CatBuild, Commands: []string{"echo unreached"}, Reason: "test"},
 	)
 	var buf bytes.Buffer
-	if err := Run(context.Background(), t.TempDir(), pl, &buf); err == nil {
+	if err := Run(context.Background(), t.TempDir(), pl, &buf, Options{}); err == nil {
 		t.Fatal("expected error from failing required step")
 	}
 	data, err := os.ReadFile(summaryPath)
@@ -147,7 +147,7 @@ func TestRunSummaryAppends(t *testing.T) {
 	pl := testPlan(plan.Step{ID: "ok", Name: "OK", Category: plan.CatTest, Commands: []string{"true"}, Reason: "test"})
 	for i := 0; i < 2; i++ {
 		var buf bytes.Buffer
-		if err := Run(context.Background(), t.TempDir(), pl, &buf); err != nil {
+		if err := Run(context.Background(), t.TempDir(), pl, &buf, Options{}); err != nil {
 			t.Fatalf("run %d: %v", i, err)
 		}
 	}
@@ -165,7 +165,7 @@ func TestRunWithoutSummaryEnvUnchanged(t *testing.T) {
 	t.Setenv("GITHUB_STEP_SUMMARY", "")
 	pl := testPlan(plan.Step{ID: "ok", Name: "OK", Category: plan.CatTest, Commands: []string{"echo hi"}, Reason: "test"})
 	var buf bytes.Buffer
-	if err := Run(context.Background(), t.TempDir(), pl, &buf); err != nil {
+	if err := Run(context.Background(), t.TempDir(), pl, &buf, Options{}); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(buf.String(), "star-ci summary") {
@@ -180,7 +180,7 @@ func TestRunErrorCarriesDigest(t *testing.T) {
 		Commands: []string{"echo tail-marker && exit 1"}, Reason: "test",
 	})
 	var buf bytes.Buffer
-	err := Run(context.Background(), t.TempDir(), pl, &buf)
+	err := Run(context.Background(), t.TempDir(), pl, &buf, Options{})
 	if err == nil {
 		t.Fatal("expected error")
 	}
