@@ -6,7 +6,9 @@ package profile
 import "sort"
 
 // Confidence threshold: signals below this are not acted upon.
-const MinConfidence = 0.5
+// It is a var (not a const) so the CLI can override it from the
+// `confidence` key of .star-ci.yml before any analysis runs.
+var MinConfidence = 0.5
 
 // Signal is one piece of detected evidence, kept for explainability.
 type Signal struct {
@@ -18,7 +20,7 @@ type Signal struct {
 
 // Language is a detected programming language ecosystem.
 type Language struct {
-	Name        string  // "node" | "python" | "go"
+	Name        string  // "node" | "python" | "go" | "rust"
 	VersionHint string  // e.g. "20", "3.11", "1.22"; empty if unknown
 	Confidence  float64 // 0..1
 }

@@ -5,6 +5,10 @@
 //	star-ci analyze  [path] [--json]   scan a repo and print the detected profile
 //	star-ci run      [path]            detect + execute the CI plan locally
 //	star-ci generate [path] [-o file]  detect + render a GitHub Actions workflow
+//
+// All commands honor an optional .star-ci.yml at the repo root:
+// `confidence` overrides the detection threshold, `disable` drops steps by
+// ID, and `append` adds custom steps. See internal/config.
 package main
 
 import (
@@ -14,9 +18,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/cryer/star-ci/internal/analyzer"
+	"github.com/cryer/star-ci/internal/config"
 	"github.com/cryer/star-ci/internal/plan"
+	"github.com/cryer/star-ci/internal/profile"
 	"github.com/cryer/star-ci/internal/render"
 	"github.com/cryer/star-ci/internal/rules"
 	"github.com/cryer/star-ci/internal/runner"
@@ -54,6 +61,10 @@ usage:
                    [--dry-run]       print the plan without executing
   star-ci generate [path] [-o file]  detect + render a GitHub Actions workflow
                                      (default -o .github/workflows/star-ci.yml)
+
+config: an optional .star-ci.yml at the repo root may set 'confidence'
+(threshold override), 'disable' (step IDs to drop) and 'append'
+(custom steps). It applies to all three commands.
 `)
 }
 
@@ -75,12 +86,47 @@ func fatal(format string, a ...any) {
 	os.Exit(1)
 }
 
+// loadConfig reads the optional .star-ci.yml under root and applies the
+// confidence override before any analysis runs.
+func loadConfig(root string) *config.Config {
+	cfg, err := config.Load(root)
+	if err != nil {
+		fatal("config: %v", err)
+	}
+	if cfg.Confidence != nil {
+		profile.MinConfidence = *cfg.Confidence
+	}
+	return cfg
+}
+
+// configSummary renders the analyze notice, e.g.
+// ".star-ci.yml (2 disabled, 1 appended, confidence 0.70)".
+func configSummary(cfg *config.Config) string {
+	var parts []string
+	if n := len(cfg.Disable); n > 0 {
+		parts = append(parts, fmt.Sprintf("%d disabled", n))
+	}
+	if n := len(cfg.Append); n > 0 {
+		parts = append(parts, fmt.Sprintf("%d appended", n))
+	}
+	if cfg.Confidence != nil {
+		parts = append(parts, fmt.Sprintf("confidence %.2f", *cfg.Confidence))
+	}
+	if len(parts) == 0 {
+		return filepath.Base(cfg.Path)
+	}
+	return fmt.Sprintf("%s (%s)", filepath.Base(cfg.Path), strings.Join(parts, ", "))
+}
+
 func buildPlan(root string) plan.Plan {
+	cfg := loadConfig(root)
 	prof, err := analyzer.Analyze(root)
 	if err != nil {
 		fatal("analyze: %v", err)
 	}
-	return rules.BuildPlan(prof)
+	pl := rules.BuildPlan(prof)
+	cfg.Apply(&pl)
+	return pl
 }
 
 func cmdAnalyze(args []string) int {
@@ -89,6 +135,7 @@ func cmdAnalyze(args []string) int {
 	_ = fs.Parse(args)
 	root := resolveRoot(fs.Args())
 
+	cfg := loadConfig(root)
 	prof, err := analyzer.Analyze(root)
 	if err != nil {
 		fatal("analyze: %v", err)
@@ -104,7 +151,11 @@ func cmdAnalyze(args []string) int {
 		return 0
 	}
 
-	fmt.Printf("repository: %s\n\n", root)
+	fmt.Printf("repository: %s\n", root)
+	if cfg.Loaded() {
+		fmt.Printf("config: %s\n", configSummary(cfg))
+	}
+	fmt.Println()
 	if len(prof.Languages) == 0 {
 		fmt.Println("no supported language ecosystem detected")
 	}
