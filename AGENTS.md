@@ -35,9 +35,10 @@ go build -o star-ci ./cmd/star-ci   # 产出 CLI 二进制
 | `cmd/star-ci/` | CLI 入口与子命令 |
 | `internal/profile/` | ProjectProfile / Signal 类型 |
 | `internal/plan/` | Step / Plan / Category 与排序 |
-| `internal/analyzer/` | 信号扫描（node.go / python.go / golang.go / common.go），测试用 testdata fixtures |
+| `internal/analyzer/` | 信号扫描（node.go / python.go / golang.go / rust.go / common.go），测试用 testdata fixtures |
+| `internal/config/` | 可选 `.star-ci.yml` 覆盖配置（禁用/追加步骤、置信度阈值，行扫描解析） |
 | `internal/rules/` | BuildPlan：画像 → 步骤 |
-| `internal/runner/` | Run（fail-fast 执行）/ Explain（干跑打印） |
+| `internal/runner/` | Run（fail-fast 执行）/ Explain（干跑打印）/ GitHub Job Summary 报告（summary.go） |
 | `internal/render/` | WorkflowYAML：计划 → workflow YAML（手工渲染，2 空格缩进） |
 | `action.yml` / `Dockerfile` | GitHub Action（composite）与容器镜像 |
 
@@ -50,3 +51,5 @@ go build -o star-ci ./cmd/star-ci   # 产出 CLI 二进制
 4. 每层各补测试 + analyzer 加 testdata fixture。
 
 **新增通用步骤**：只需在 `rules.go` 追加规则函数（安全类记得 `Optional: true`）。
+
+**用户覆盖**：`.star-ci.yml`（`internal/config`）可禁用/追加步骤、调整置信度阈值；改 plan 契约时需同步 `config.Apply`。

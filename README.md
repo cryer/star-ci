@@ -121,6 +121,9 @@ star-ci analyze --json    # machine-readable full ProjectProfile
 | Node/TS | `package.json` | lockfile: pnpm/yarn/bun/npm | `scripts.test`, vitest/jest/mocha/`node --test` | eslint / biome / prettier (config file required) | `tsconfig.json` + typescript → `tsc --noEmit` | `scripts.build` |
 | Python | `pyproject.toml` / `requirements.txt` / `setup.py` | uv/poetry/pipenv/pip | pytest | ruff / black | mypy | — |
 | Go | `go.mod` | go modules | any `*_test.go` → `go test ./...` | golangci-lint (requires `.golangci.yml`) | `go vet ./...` | `go build ./...` |
+| Rust | `Cargo.toml` | cargo | `cargo test` | clippy / rustfmt (config file required) | — | `cargo build` (`--locked` with `Cargo.lock`) |
+
+Node monorepo roots are recognized too: `turbo.json` / `nx.json` route test & build through `turbo run` / `nx run-many`, and frameworks (`next`, `nuxt`, `remix`, `vite`) are recorded in the step rationale.
 
 **Cross-cutting steps (all repos, optional):**
 
@@ -128,7 +131,30 @@ star-ci analyze --json    # machine-readable full ProjectProfile
 - Secret leak scan: `gitleaks detect`
 - `Dockerfile` detected → `docker build .` to verify the image builds
 
-Version inference: `.nvmrc` / `.node-version` / `engines.node`, `requires-python` in `pyproject.toml`, the `go` directive in `go.mod`.
+Version inference: `.nvmrc` / `.node-version` / `engines.node`, `requires-python` in `pyproject.toml`, the `go` directive in `go.mod`, `rust-toolchain(.toml)` / `rust-version` in `Cargo.toml`.
+
+## Configuration (optional `.star-ci.yml`)
+
+star-ci is zero-config by default, but a minimal `.star-ci.yml` at the repo root can override the inferred plan:
+
+```yaml
+confidence: 0.7          # raise/lower the detection threshold (default 0.5)
+disable:                 # drop inferred steps by ID
+  - node-security
+append:                  # add your own steps
+  - id: docs-link-check
+    name: Docs link check
+    category: test       # install|lint|typecheck|test|build|security
+    commands:
+      - npx markdown-link-check README.md
+    optional: true
+```
+
+`analyze` prints a line when a config is in effect; `run` and `generate` honor it automatically.
+
+## CI reports (GitHub Job Summary)
+
+Inside GitHub Actions, `star-ci run` appends a Markdown report to the [Job Summary](https://github.blog/news-insights/product-news/supercharging-github-actions-with-job-summaries/) (`$GITHUB_STEP_SUMMARY`): the detected profile, a per-step result table with each step's detection rationale, and collapsible failure digests (the tail of the failed step's output). Locally, a failing step's error message carries the same digest.
 
 ## Project layout
 
@@ -136,7 +162,8 @@ Version inference: `.nvmrc` / `.node-version` / `engines.node`, `requires-python
 cmd/star-ci/        CLI entrypoint (analyze / run / generate)
 internal/profile/   Project profile types (ProjectProfile / Signal) — the core contract
 internal/plan/      CI step & plan types (Step / Plan / Category)
-internal/analyzer/  Signal scanners (node / python / go / common)
+internal/analyzer/  Signal scanners (node / python / go / rust / common)
+internal/config/    Optional .star-ci.yml overrides (disable/append steps, confidence)
 internal/rules/     Rule engine: profile → steps
 internal/runner/    Local executor (fail-fast + optional warnings)
 internal/render/    Plan → GitHub Actions YAML
@@ -149,13 +176,15 @@ Dockerfile          Container image
 **v1.x — hardening (current focus)**
 
 - [x] `run --dry-run`: print the inferred plan without executing
-- [ ] `.star-ci.yml` minimal override config (disable/append steps, tune confidence threshold)
-- [ ] Reporter: GitHub Job Summary + PR comments with failure digests and the detection rationale
-- [ ] Richer Node signals (turbo/nx monorepo roots, framework-specific build commands)
+- [x] `.star-ci.yml` minimal override config (disable/append steps, tune confidence threshold)
+- [x] Reporter: GitHub Job Summary with failure digests and the detection rationale
+- [ ] Reporter: PR comments with failure digests
+- [x] Richer Node signals (turbo/nx monorepo roots, framework-specific build commands)
 
 **v2 — ecosystems & scale**
 
-- [ ] Rust (`Cargo.toml`), Java (Maven/Gradle), Ruby, PHP, .NET
+- [x] Rust (`Cargo.toml`)
+- [ ] Java (Maven/Gradle), Ruby, PHP, .NET
 - [ ] Monorepo workspace detection + path filtering (only run CI for affected packages, matrix jobs)
 - [ ] Coverage thresholds when tests emit coverage reports
 - [ ] Smarter caching (lockfile-keyed dependency caches, build artifact caches)

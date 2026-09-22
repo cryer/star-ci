@@ -121,6 +121,9 @@ star-ci analyze --json    # 机器可读的完整 ProjectProfile
 | Node/TS | `package.json` | 锁文件区分 pnpm/yarn/bun/npm | `scripts.test`、vitest/jest/mocha/`node --test` | eslint / biome / prettier（需配置文件） | `tsconfig.json` + typescript → `tsc --noEmit` | `scripts.build` |
 | Python | `pyproject.toml` / `requirements.txt` / `setup.py` | uv/poetry/pipenv/pip | pytest | ruff / black | mypy | — |
 | Go | `go.mod` | go modules | 存在 `*_test.go` → `go test ./...` | golangci-lint（需 `.golangci.yml`） | `go vet ./...` | `go build ./...` |
+| Rust | `Cargo.toml` | cargo | `cargo test` | clippy / rustfmt（需配置文件） | — | `cargo build`（有 `Cargo.lock` 时 `--locked`） |
+
+Node monorepo 根也会被识别：`turbo.json` / `nx.json` 会让 test 与 build 步骤改走 `turbo run` / `nx run-many`，框架（`next`、`nuxt`、`remix`、`vite`）会记录在步骤的检测依据中。
 
 **通用横切步骤（所有仓库，optional）：**
 
@@ -128,7 +131,30 @@ star-ci analyze --json    # 机器可读的完整 ProjectProfile
 - 密钥泄露扫描：`gitleaks detect`
 - 检测到 `Dockerfile` → `docker build .` 验证镜像可构建
 
-版本推断：`.nvmrc` / `.node-version` / `engines.node`、`pyproject.toml` 的 `requires-python`、`go.mod` 的 `go` 指令。
+版本推断：`.nvmrc` / `.node-version` / `engines.node`、`pyproject.toml` 的 `requires-python`、`go.mod` 的 `go` 指令、`rust-toolchain(.toml)` / `Cargo.toml` 的 `rust-version`。
+
+## 配置（可选的 `.star-ci.yml`）
+
+star-ci 默认零配置，但仓库根目录放一个最小 `.star-ci.yml` 即可覆盖推断出的计划：
+
+```yaml
+confidence: 0.7          # 调高/调低检测置信度阈值（默认 0.5）
+disable:                 # 按 ID 禁用推断出的步骤
+  - node-security
+append:                  # 追加自定义步骤
+  - id: docs-link-check
+    name: Docs link check
+    category: test       # install|lint|typecheck|test|build|security
+    commands:
+      - npx markdown-link-check README.md
+    optional: true
+```
+
+配置生效时 `analyze` 会打印一行提示；`run` 与 `generate` 自动遵循。
+
+## CI 报告（GitHub Job Summary）
+
+在 GitHub Actions 中，`star-ci run` 会向 Job Summary（`$GITHUB_STEP_SUMMARY`）追加 Markdown 报告：检测到的画像、带检测依据的步骤结果表，以及可折叠的失败摘要（失败步骤输出的尾部）。本地运行时，失败步骤的错误信息同样附带该摘要。
 
 ## 项目结构
 
@@ -136,7 +162,8 @@ star-ci analyze --json    # 机器可读的完整 ProjectProfile
 cmd/star-ci/        CLI 入口（analyze / run / generate）
 internal/profile/   项目画像类型（ProjectProfile / Signal）——核心契约
 internal/plan/      CI 步骤与计划类型（Step / Plan / Category）
-internal/analyzer/  信号扫描器（node / python / go / common）
+internal/analyzer/  信号扫描器（node / python / go / rust / common）
+internal/config/    可选的 .star-ci.yml 覆盖配置（禁用/追加步骤、置信度阈值）
 internal/rules/     规则引擎：画像 → 步骤
 internal/runner/    本地执行器（fail-fast + optional 警告）
 internal/render/    计划 → GitHub Actions YAML
@@ -149,13 +176,15 @@ Dockerfile          容器镜像
 **v1.x —— 加固（当前重点）**
 
 - [x] `run --dry-run`：只打印推断出的计划，不执行
-- [ ] `.star-ci.yml` 最小覆盖配置（禁用/追加步骤、调整置信度阈值）
-- [ ] Reporter：GitHub Job Summary + PR 评论（失败摘要 + 检测依据）
-- [ ] 更丰富的 Node 信号（turbo/nx monorepo 根、框架特定构建命令）
+- [x] `.star-ci.yml` 最小覆盖配置（禁用/追加步骤、调整置信度阈值）
+- [x] Reporter：GitHub Job Summary（失败摘要 + 检测依据）
+- [ ] Reporter：PR 评论（失败摘要）
+- [x] 更丰富的 Node 信号（turbo/nx monorepo 根、框架特定构建命令）
 
 **v2 —— 生态与规模**
 
-- [ ] Rust（`Cargo.toml`）、Java（Maven/Gradle）、Ruby、PHP、.NET
+- [x] Rust（`Cargo.toml`）
+- [ ] Java（Maven/Gradle）、Ruby、PHP、.NET
 - [ ] monorepo workspace 检测与路径过滤（只跑受影响的包，矩阵 job）
 - [ ] 测试产出覆盖率报告时的阈值检查
 - [ ] 更聪明的缓存（锁文件 keyed 依赖缓存、构建产物缓存）
