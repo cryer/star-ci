@@ -43,6 +43,10 @@ func detectDotnet(root string, prof *profile.Profile) {
 	}
 	prof.AddSignal(dotnetEvidence(slns, csprojs), "package_manager", "nuget", 0.9)
 
+	if fileExists(root, "packages.lock.json") {
+		prof.Lockfiles = profile.AddUnique(prof.Lockfiles, "packages.lock.json")
+	}
+
 	if testProj := findDotnetTestProject(root); testProj != "" {
 		setTestRunner(prof, "dotnet")
 		prof.AddSignal(testProj, "test_runner", "dotnet", 0.9)

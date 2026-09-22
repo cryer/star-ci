@@ -25,6 +25,14 @@ type Language struct {
 	Confidence  float64 // 0..1
 }
 
+// Workspace is one package directory inside a monorepo, detected from
+// workspace declarations (package.json workspaces, pnpm-workspace.yaml,
+// Cargo.toml [workspace], go.work).
+type Workspace struct {
+	Path string // directory relative to the repo root, e.g. "packages/web"
+	Kind string // "node" | "cargo" | "go"
+}
+
 // Profile is the project portrait produced by the analyzer.
 type Profile struct {
 	Languages      []Language        // detected ecosystems, highest confidence first
@@ -35,7 +43,8 @@ type Profile struct {
 	Typecheck      string            // tsc|mypy|govet, "" if none
 	HasDockerfile  bool              // a Dockerfile exists at the root
 	ExistingCI     []string          // e.g. "github-actions"
-	Lockfiles      []string          // relative paths of lockfiles found
+	Lockfiles      []string          // relative paths of lockfiles / dependency manifests found (lockfiles, requirements*.txt)
+	Workspaces     []Workspace       // monorepo package dirs, sorted by Path
 	Scripts        map[string]string // named scripts found in manifests (e.g. package.json scripts)
 	Signals        []Signal          // full evidence trail for explainability
 }

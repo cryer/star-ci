@@ -71,6 +71,9 @@ func detectPython(root string, prof *profile.Profile) {
 	hasSetupCfg := fileExists(root, "setup.cfg")
 	hasPipfile := fileExists(root, "Pipfile")
 	reqFiles := requirementFiles(root)
+	for _, f := range reqFiles {
+		prof.Lockfiles = profile.AddUnique(prof.Lockfiles, f)
+	}
 
 	if !hasPyproject && !hasSetupPy && !hasSetupCfg && !hasPipfile && len(reqFiles) == 0 {
 		return

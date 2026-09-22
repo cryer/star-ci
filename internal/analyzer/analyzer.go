@@ -33,6 +33,7 @@ func Analyze(root string) (profile.Profile, error) {
 	detectDotnet(root, &prof)
 	detectCpp(root, &prof)
 	detectCommon(root, &prof)
+	detectWorkspaces(root, &prof)
 	prof.SortLanguages()
 	return prof, nil
 }

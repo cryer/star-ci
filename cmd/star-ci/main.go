@@ -4,7 +4,10 @@
 //
 //	star-ci analyze  [path] [--json]   scan a repo and print the detected profile
 //	star-ci run      [path]            detect + execute the CI plan locally
+//	                   [--changed-since <git-ref>]  in a monorepo, only run
+//	                                    workspaces affected by changes since ref
 //	star-ci generate [path] [-o file]  detect + render a GitHub Actions workflow
+//	                                   (matrix jobs when workspaces are detected)
 //
 // All commands honor an optional .star-ci.yml at the repo root:
 // `confidence` overrides the detection threshold, `coverage` declares a
@@ -60,8 +63,12 @@ usage:
   star-ci analyze  [path] [--json]   scan a repo and print the detected profile
   star-ci run      [path]            detect + execute the CI plan locally
                    [--dry-run]       print the plan without executing
+                   [--changed-since <git-ref>]
+                                     monorepo only: analyze + run just the
+                                     workspaces affected by changes since ref
   star-ci generate [path] [-o file]  detect + render a GitHub Actions workflow
                                      (default -o .github/workflows/star-ci.yml)
+                                     detected workspaces render as matrix jobs
 
 config: an optional .star-ci.yml at the repo root may set 'confidence'
 (threshold override), 'coverage' (required line-coverage percentage for
@@ -189,6 +196,12 @@ func cmdAnalyze(args []string) int {
 	if len(prof.ExistingCI) > 0 {
 		fmt.Printf("existing CI: %v\n", prof.ExistingCI)
 	}
+	if len(prof.Workspaces) > 0 {
+		fmt.Println("workspaces:")
+		for _, ws := range prof.Workspaces {
+			fmt.Printf("  %s (%s)\n", ws.Path, ws.Kind)
+		}
+	}
 	fmt.Printf("\nevidence (%d signals):\n", len(prof.Signals))
 	for _, s := range prof.Signals {
 		fmt.Printf("  [%.2f] %s: %s = %s\n", s.Confidence, s.Source, s.Key, s.Value)
@@ -199,10 +212,14 @@ func cmdAnalyze(args []string) int {
 func cmdRun(args []string) int {
 	fs := flag.NewFlagSet("run", flag.ExitOnError)
 	dryRun := fs.Bool("dry-run", false, "print the plan without executing")
+	changedSince := fs.String("changed-since", "", "monorepo only: run just workspaces affected by changes since this git ref")
 	_ = fs.Parse(args)
 	root := resolveRoot(fs.Args())
 
 	pl, cfg := buildPlan(root)
+	if *changedSince != "" {
+		return runAffected(root, *changedSince, pl.Profile.Workspaces, cfg, *dryRun)
+	}
 	if *dryRun {
 		runner.Explain(pl, os.Stdout)
 		return 0
@@ -215,6 +232,53 @@ func cmdRun(args []string) int {
 	return 0
 }
 
+// runAffected executes the plan of every workspace touched by changes since
+// ref. Fail-fast: the first failing workspace aborts the run.
+func runAffected(root, ref string, workspaces []profile.Workspace, cfg *config.Config, dryRun bool) int {
+	if len(workspaces) == 0 {
+		fatal("--changed-since is meaningless here: no workspaces detected at %s", root)
+	}
+	ctx := context.Background()
+	files, err := runner.ChangedFiles(ctx, root, ref)
+	if err != nil {
+		fatal("%v", err)
+	}
+	if len(files) == 0 {
+		fmt.Printf("star-ci: no changes since %s; nothing to do\n", ref)
+		return 0
+	}
+	affected := profile.AffectedWorkspaces(workspaces, files)
+	fmt.Printf("star-ci: %d changed files since %s, %d/%d workspaces affected\n",
+		len(files), ref, len(affected), len(workspaces))
+
+	opts := runner.Options{CoverageThreshold: cfg.Coverage}
+	for _, ws := range affected {
+		wsDir := filepath.Join(root, filepath.FromSlash(ws.Path))
+		fmt.Printf("==> workspace %s (%s)\n", ws.Path, ws.Kind)
+		subPl := workspacePlan(wsDir, cfg)
+		if dryRun {
+			runner.Explain(subPl, os.Stdout)
+			continue
+		}
+		if err := runner.Run(ctx, wsDir, subPl, os.Stdout, opts); err != nil {
+			fmt.Fprintf(os.Stderr, "star-ci: workspace %s: %v\n", ws.Path, err)
+			return 1
+		}
+	}
+	return 0
+}
+
+// workspacePlan analyzes a workspace directory and derives its CI plan.
+func workspacePlan(dir string, cfg *config.Config) plan.Plan {
+	prof, err := analyzer.Analyze(dir)
+	if err != nil {
+		fatal("analyze %s: %v", dir, err)
+	}
+	pl := rules.BuildPlan(prof)
+	cfg.Apply(&pl)
+	return pl
+}
+
 func cmdGenerate(args []string) int {
 	fs := flag.NewFlagSet("generate", flag.ExitOnError)
 	out := fs.String("o", "", "output workflow path (default <repo>/.github/workflows/star-ci.yml)")
@@ -222,9 +286,33 @@ func cmdGenerate(args []string) int {
 	_ = fs.Parse(args)
 	root := resolveRoot(fs.Args())
 
-	pl, _ := buildPlan(root)
-	if len(pl.Steps) == 0 {
+	pl, cfg := buildPlan(root)
+
+	var wsPlans []render.WorkspacePlan
+	if len(pl.Profile.Workspaces) > 0 {
+		for _, ws := range pl.Profile.Workspaces {
+			subPl := workspacePlan(filepath.Join(root, filepath.FromSlash(ws.Path)), cfg)
+			if len(subPl.Steps) == 0 {
+				continue
+			}
+			wsPlans = append(wsPlans, render.WorkspacePlan{Path: ws.Path, Plan: subPl})
+		}
+		if len(wsPlans) == 0 {
+			fatal("nothing detected: no CI steps to generate")
+		}
+	} else if len(pl.Steps) == 0 {
 		fatal("nothing detected: no CI steps to generate")
+	}
+
+	var data []byte
+	var err error
+	if len(wsPlans) > 0 {
+		data, err = render.WorkflowMatrixYAML(wsPlans)
+	} else {
+		data, err = render.WorkflowYAML(pl)
+	}
+	if err != nil {
+		fatal("render: %v", err)
 	}
 
 	outPath := *out
@@ -237,17 +325,22 @@ func cmdGenerate(args []string) int {
 		fatal("%s already exists (use --force to overwrite)", outPath)
 	}
 
-	data, err := render.WorkflowYAML(pl)
-	if err != nil {
-		fatal("render: %v", err)
-	}
 	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
 		fatal("mkdir: %v", err)
 	}
 	if err := os.WriteFile(outPath, data, 0o644); err != nil {
 		fatal("write: %v", err)
 	}
-	fmt.Printf("wrote %s (%d steps)\n", outPath, len(pl.Steps))
+	fmt.Printf("wrote %s\n", outPath)
+	if len(wsPlans) > 0 {
+		for _, wp := range wsPlans {
+			fmt.Printf("  workspace %s (%d steps)\n", wp.Path, len(wp.Plan.Steps))
+			for _, s := range wp.Plan.Steps {
+				fmt.Printf("    - %s (%s): %s\n", s.ID, s.Category, s.Reason)
+			}
+		}
+		return 0
+	}
 	for _, s := range pl.Steps {
 		fmt.Printf("  - %s (%s): %s\n", s.ID, s.Category, s.Reason)
 	}

@@ -92,6 +92,9 @@ func TestPythonPytest(t *testing.T) {
 	if !hasString(prof.Lockfiles, "uv.lock") {
 		t.Errorf("Lockfiles = %v, want uv.lock", prof.Lockfiles)
 	}
+	if !hasString(prof.Lockfiles, "requirements.txt") {
+		t.Errorf("Lockfiles = %v, want requirements.txt", prof.Lockfiles)
+	}
 	if prof.TestRunner != "pytest" {
 		t.Errorf("TestRunner = %q, want pytest", prof.TestRunner)
 	}
@@ -382,6 +385,9 @@ func TestDotnetSln(t *testing.T) {
 	}
 	if prof.PackageManager != "nuget" {
 		t.Errorf("PackageManager = %q, want nuget", prof.PackageManager)
+	}
+	if !hasString(prof.Lockfiles, "packages.lock.json") {
+		t.Errorf("Lockfiles = %v, want packages.lock.json", prof.Lockfiles)
 	}
 	if !hasSignal(prof, "test_runner", "dotnet") {
 		t.Error("missing test_runner=dotnet signal (test project present)")

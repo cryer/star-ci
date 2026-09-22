@@ -1,0 +1,9 @@
+{
+  "name": "acme-monorepo",
+  "private": true,
+  "workspaces": ["packages/*", "apps/*"],
+  "scripts": {
+    "test": "vitest run",
+    "build": "echo build"
+  }
+}
